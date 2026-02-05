@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <base target="_top">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SG-SST - Panel de Administración</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .step-card {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 20px;
+            border-left: 4px solid #667eea;
+            transition: all 0.3s ease;
+        }
+
+        .step-card:hover {
+            transform: translateX(5px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .step-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .step-number {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            margin-right: 15px;
+            font-size: 18px;
+        }
+
+        .step-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #2d3748;
+        }
+
+        .step-description {
+            color: #718096;
+            margin-bottom: 15px;
+            line-height: 1.6;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            width: 100%;
+            margin-top: 10px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #f56565 0%, #c53030 100%);
+        }
+
+        .btn-danger:hover {
+            box-shadow: 0 5px 15px rgba(245, 101, 101, 0.4);
+        }
+
+        .status {
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            display: inline-block;
+            margin-top: 10px;
+        }
+
+        .status.success {
+            background: #c6f6d5;
+            color: #22543d;
+        }
+
+        .status.error {
+            background: #fed7d7;
+            color: #742a2a;
+        }
+
+        .status.info {
+            background: #bee3f8;
+            color: #2c5282;
+        }
+
+        .log-container {
+            background: #1a202c;
+            color: #e2e8f0;
+            padding: 20px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 20px;
+            line-height: 1.6;
+        }
+
+        .log-container:empty::before {
+            content: 'Los logs aparecerán aquí...';
+            opacity: 0.5;
+        }
+
+        .credentials {
+            background: #edf2f7;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            border-left: 4px solid #48bb78;
+        }
+
+        .credentials strong {
+            color: #2d3748;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .loading.active {
+            display: block;
+        }
+
+        .spinner {
+            border: 3px solid #f3f4f6;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🛡️ SG-SST - Panel de Administración</h1>
+            <p>Configuración e inicialización del sistema</p>
+        </div>
+
+        <div class="content">
+            <!-- Paso 1 -->
+            <div class="step-card">
+                <div class="step-header">
+                    <div class="step-number">1</div>
+                    <div class="step-title">Inicializar Sistema</div>
+                </div>
+                <div class="step-description">
+                    Crea todas las hojas necesarias en Google Sheets con sus respectivos encabezados.
+                    Ejecutar solo una vez al configurar el sistema por primera vez.
+                </div>
+                <button class="btn" onclick="ejecutarPaso1()">🚀 Inicializar Sistema</button>
+                <div id="status1"></div>
+            </div>
+
+            <!-- Paso 2 -->
+            <div class="step-card">
+                <div class="step-header">
+                    <div class="step-number">2</div>
+                    <div class="step-title">Crear Datos de Prueba</div>
+                </div>
+                <div class="step-description">
+                    Genera datos de ejemplo: 1 empresa, 3 empleados, 4 documentos y 1 usuario administrador.
+                    Perfecto para probar el sistema.
+                </div>
+                <button class="btn" onclick="ejecutarPaso2()">📊 Generar Datos de Prueba</button>
+                <div id="status2"></div>
+                <div id="credentials" class="credentials" style="display:none;">
+                    <strong>🔑 Credenciales de Acceso:</strong><br>
+                    Email: <code>admin@demo.com</code><br>
+                    Password: <code>admin123</code>
+                </div>
+            </div>
+
+            <!-- Paso 3 -->
+            <div class="step-card">
+                <div class="step-header">
+                    <div class="step-number">3</div>
+                    <div class="step-title">Verificar Datos</div>
+                </div>
+                <div class="step-description">
+                    Verifica que los datos se hayan creado correctamente y prueba la función del Dashboard.
+                </div>
+                <button class="btn" onclick="ejecutarPaso3()">🔍 Verificar Sistema</button>
+                <div id="status3"></div>
+            </div>
+
+            <!-- Paso 4 -->
+            <div class="step-card">
+                <div class="step-header">
+                    <div class="step-number">4</div>
+                    <div class="step-title">Limpiar Datos</div>
+                </div>
+                <div class="step-description">
+                    ⚠️ CUIDADO: Elimina TODOS los datos del sistema. Esta acción no se puede deshacer.
+                </div>
+                <button class="btn btn-danger" onclick="ejecutarPaso4()">🗑️ Limpiar Todos los Datos</button>
+                <div id="status4"></div>
+            </div>
+
+            <!-- Log Container -->
+            <div class="log-container" id="logContainer"></div>
+
+            <!-- Loading -->
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p style="margin-top: 15px; color: #667eea; font-weight: 600;">Procesando...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function log(message, type = 'info') {
+            const container = document.getElementById('logContainer');
+            const timestamp = new Date().toLocaleTimeString();
+            const icon = type === 'success' ? '✅' : type === 'error' ? '❌' : 'ℹ️';
+            container.innerHTML += `[${timestamp}] ${icon} ${message}\n`;
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function showLoading() {
+            document.getElementById('loading').classList.add('active');
+        }
+
+        function hideLoading() {
+            document.getElementById('loading').classList.remove('active');
+        }
+
+        function showStatus(stepId, message, type) {
+            const statusDiv = document.getElementById('status' + stepId);
+            statusDiv.innerHTML = `<div class="status ${type}">${message}</div>`;
+        }
+
+        function ejecutarPaso1() {
+            showLoading();
+            log('Iniciando inicialización del sistema...');
+
+            google.script.run
+                .withSuccessHandler(function (result) {
+                    hideLoading();
+                    if (result.success) {
+                        log('Sistema inicializado correctamente', 'success');
+                        showStatus(1, '✅ Sistema inicializado correctamente', 'success');
+                    } else {
+                        log('Error: ' + result.error, 'error');
+                        showStatus(1, '❌ Error: ' + result.error, 'error');
+                    }
+                })
+                .withFailureHandler(function (error) {
+                    hideLoading();
+                    log('Error: ' + error.message, 'error');
+                    showStatus(1, '❌ Error: ' + error.message, 'error');
+                })
+                .paso1_inicializarSistema();
+        }
+
+        function ejecutarPaso2() {
+            showLoading();
+            log('Generando datos de prueba...');
+
+            google.script.run
+                .withSuccessHandler(function (result) {
+                    hideLoading();
+                    if (result.success) {
+                        log('Datos de prueba creados exitosamente', 'success');
+                        log('Empresa ID: ' + result.empresaId, 'info');
+                        showStatus(2, '✅ Datos creados correctamente', 'success');
+                        document.getElementById('credentials').style.display = 'block';
+                    } else {
+                        log('Error: ' + result.error, 'error');
+                        showStatus(2, '❌ Error: ' + result.error, 'error');
+                    }
+                })
+                .withFailureHandler(function (error) {
+                    hideLoading();
+                    log('Error: ' + error.message, 'error');
+                    showStatus(2, '❌ Error: ' + error.message, 'error');
+                })
+                .paso2_crearDatosPrueba();
+        }
+
+        function ejecutarPaso3() {
+            showLoading();
+            log('Verificando datos del sistema...');
+
+            google.script.run
+                .withSuccessHandler(function (result) {
+                    hideLoading();
+                    if (result.success) {
+                        log('Verificación completada exitosamente', 'success');
+                        showStatus(3, '✅ Sistema verificado correctamente', 'success');
+                    } else {
+                        log('Error: ' + result.error, 'error');
+                        showStatus(3, '❌ Error: ' + result.error, 'error');
+                    }
+                })
+                .withFailureHandler(function (error) {
+                    hideLoading();
+                    log('Error: ' + error.message, 'error');
+                    showStatus(3, '❌ Error: ' + error.message, 'error');
+                })
+                .paso3_verificarDatos();
+        }
+
+        function ejecutarPaso4() {
+            if (!confirm('⚠️ ADVERTENCIA: ¿Está seguro de eliminar TODOS los datos?\n\nEsta acción NO se puede deshacer.')) {
+                log('Operación cancelada por el usuario', 'info');
+                return;
+            }
+
+            showLoading();
+            log('Limpiando todos los datos...', 'error');
+
+            google.script.run
+                .withSuccessHandler(function (result) {
+                    hideLoading();
+                    if (result.success) {
+                        log('Todos los datos han sido eliminados', 'success');
+                        showStatus(4, '✅ Datos eliminados correctamente', 'success');
+                        document.getElementById('credentials').style.display = 'none';
+                    } else {
+                        log('Error: ' + (result.error || result.message), 'error');
+                        showStatus(4, '❌ ' + (result.error || result.message), 'error');
+                    }
+                })
+                .withFailureHandler(function (error) {
+                    hideLoading();
+                    log('Error: ' + error.message, 'error');
+                    showStatus(4, '❌ Error: ' + error.message, 'error');
+                })
+                .paso4_limpiarDatos();
+        }
+
+        // Log inicial
+        window.onload = function () {
+            log('Panel de administración cargado correctamente', 'success');
+            log('Seleccione una opción para comenzar', 'info');
+        };
+    </script>
+</body>
+
+</html>

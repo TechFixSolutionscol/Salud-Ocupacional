@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SG-SST Management System</title>
+    <meta name="description" content="Sistema de Gestión de Seguridad y Salud en el Trabajo">
+    <!-- Local Development Styles -->
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="css/login.css">
+
+    <!-- Google Apps Script Production Styles -->
+    <? if (typeof HtmlService !== 'undefined') { ?>
+    <?!= HtmlService.createHtmlOutputFromFile('styles').getContent(); ?>
+    <?!= HtmlService.createHtmlOutputFromFile('login_styles').getContent(); ?>
+    <? } ?>
+
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <!-- Login Screen -->
+    <div id="loginScreen" class="login-screen">
+        <div class="login-container">
+            <div class="login-header">
+                <h1 class="login-logo">SG-SST</h1>
+                <p class="login-subtitle">Sistema de Gestión de Seguridad y Salud en el Trabajo</p>
+            </div>
+            <form id="loginForm" class="login-form">
+                <div class="form-group">
+                    <label class="form-label">Email</label>
+                    <input type="email" id="loginEmail" class="form-input" placeholder="correo@empresa.com" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Contraseña</label>
+                    <input type="password" id="loginPassword" class="form-input" placeholder="••••••••" required>
+                </div>
+                <div id="loginError" class="login-error hidden"></div>
+                <button type="submit" class="btn btn-primary btn-block" id="loginBtn">
+                    Iniciar Sesión
+                </button>
+            </form>
+            <div class="login-footer">
+                <p>Sistema SG-SST v1.0</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main App (hidden until login) -->
+    <div id="app" class="hidden">
+        <!-- Sidebar -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <h1 class="logo">SG-SST</h1>
+                <span class="version">v1.0</span>
+            </div>
+
+            <nav class="sidebar-nav">
+                <a href="#" class="nav-item active" data-section="dashboard">
+                    <span class="nav-icon">📊</span>
+                    <span class="nav-text">Dashboard</span>
+                </a>
+                <a href="#" class="nav-item" data-section="empresas">
+                    <span class="nav-icon">🏢</span>
+                    <span class="nav-text">Empresas</span>
+                </a>
+                <a href="#" class="nav-item" data-section="empleados">
+                    <span class="nav-icon">👥</span>
+                    <span class="nav-text">Empleados</span>
+                </a>
+                <a href="#" class="nav-item" data-section="documentos">
+                    <span class="nav-icon">📄</span>
+                    <span class="nav-text">Documentos SST</span>
+                </a>
+                <a href="#" class="nav-item" data-section="procesos">
+                    <span class="nav-icon">🔄</span>
+                    <span class="nav-text">Procesos</span>
+                </a>
+                <a href="#" class="nav-item" data-section="riesgos">
+                    <span class="nav-icon">⚠️</span>
+                    <span class="nav-text">Matriz Riesgos</span>
+                </a>
+                <a href="#" class="nav-item" data-section="investigaciones">
+                    <span class="nav-icon">🛡️</span>
+                    <span class="nav-text">Investigaciones</span>
+                </a>
+                <a href="#" class="nav-item" data-section="planes">
+                    <span class="nav-icon">📋</span>
+                    <span class="nav-text">Planes Acción</span>
+                </a>
+                <a href="#" class="nav-item" data-section="auditorias">
+                    <span class="nav-icon">🛡️</span>
+                    <span class="nav-text">Auditorías</span>
+                </a>
+                <a href="#" class="nav-item" data-section="alertas">
+                    <span class="nav-icon">🔔</span>
+                    <span class="nav-text">Alertas</span>
+                    <span class="nav-badge" id="alertasBadge">0</span>
+                </a>
+                <a href="#" class="nav-item" data-section="reportes">
+                    <span class="nav-icon">📈</span>
+                    <span class="nav-text">Reportes</span>
+                </a>
+                <a href="#" class="nav-item" data-section="usuarios">
+                    <span class="nav-icon">⚙️</span>
+                    <span class="nav-text">Usuarios</span>
+                </a>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="user-info">
+                    <span class="user-name" id="currentUser">Admin</span>
+                    <span class="user-role" id="currentRole">Administrador</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="main-header">
+                <button class="menu-toggle" id="menuToggle">☰</button>
+                <div class="header-title">
+                    <h2 id="sectionTitle">Dashboard</h2>
+                </div>
+                <div class="header-actions">
+                    <select id="empresaSelector" class="empresa-select">
+                        <option value="">Todas las empresas</option>
+                    </select>
+                </div>
+            </header>
+
+            <!-- Content Area -->
+            <div class="content-area" id="contentArea">
+                <!-- Dashboard Section -->
+                <section class="section" id="dashboardSection">
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-icon">🏢</div>
+                            <div class="stat-info">
+                                <span class="stat-value" id="statEmpresas">0</span>
+                                <span class="stat-label">Empresas Activas</span>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">👥</div>
+                            <div class="stat-info">
+                                <span class="stat-value" id="statEmpleados">0</span>
+                                <span class="stat-label">Empleados</span>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">📄</div>
+                            <div class="stat-info">
+                                <span class="stat-value" id="statDocumentos">0</span>
+                                <span class="stat-label">Documentos</span>
+                            </div>
+                        </div>
+                        <div class="stat-card warning">
+                            <div class="stat-icon">⚠️</div>
+                            <div class="stat-info">
+                                <span class="stat-value" id="statAlertas">0</span>
+                                <span class="stat-label">Alertas Pendientes</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="dashboard-grid">
+                        <div class="card">
+                            <div class="card-header">
+                                <h3>Estado de Cumplimiento</h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="compliance-meter">
+                                    <div class="compliance-bar" id="complianceBar" style="width: 0%"></div>
+                                </div>
+                                <div class="compliance-stats">
+                                    <div class="doc-stat vigente">
+                                        <span class="doc-stat-value" id="docsVigentes">0</span>
+                                        <span class="doc-stat-label">Vigentes</span>
+                                    </div>
+                                    <div class="doc-stat por-vencer">
+                                        <span class="doc-stat-value" id="docsPorVencer">0</span>
+                                        <span class="doc-stat-label">Por Vencer</span>
+                                    </div>
+                                    <div class="doc-stat vencido">
+                                        <span class="doc-stat-value" id="docsVencidos">0</span>
+                                        <span class="doc-stat-label">Vencidos</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card">
+                            <div class="card-header">
+                                <h3>Alertas Recientes</h3>
+                                <a href="#" class="card-action" data-section="alertas">Ver todas →</a>
+                            </div>
+                            <div class="card-body">
+                                <div class="alerts-list" id="recentAlerts">
+                                    <div class="loading">Cargando...</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card">
+                            <div class="card-header">
+                                <h3>Documentos por Vencer</h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="docs-list" id="expiringDocs">
+                                    <div class="loading">Cargando...</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Empresas Section -->
+                <section class="section hidden" id="empresasSection">
+                    <div class="section-header">
+                        <div class="filters-panel" id="empresasFilters">
+                            <div class="filter-group">
+                                <input type="text" id="empresaBusqueda" class="filter-input"
+                                    placeholder="Buscar por nombre o NIT...">
+                            </div>
+                            <div class="filter-group">
+                                <select id="empresaEstado" class="filter-select">
+                                    <option value="">Todos los estados</option>
+                                    <option value="activo">Activo</option>
+                                    <option value="inactivo">Inactivo</option>
+                                </select>
+                            </div>
+                            <button class="btn btn-secondary" id="empresasFilterBtn">Filtrar</button>
+                            <button class="btn btn-ghost" id="empresasClearBtn">Limpiar</button>
+                        </div>
+                        <button class="btn btn-primary" id="addEmpresaBtn">+ Nueva Empresa</button>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table" id="empresasTable">
+                            <thead>
+                                <tr>
+                                    <th>Nombre</th>
+                                    <th>NIT</th>
+                                    <th>Teléfono</th>
+                                    <th>Responsable SST</th>
+                                    <th>Estado</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="empresasTableBody"></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- Empleados Section -->
+                <section class="section hidden" id="empleadosSection">
+                    <div class="section-header">
+                        <div class="filters-panel" id="empleadosFilters">
+                            <div class="filter-group">
+                                <select id="empleadoEmpresa" class="filter-select">
+                                    <option value="">Todas las empresas</option>
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <input type="text" id="empleadoBusqueda" class="filter-input" placeholder="Buscar...">
+                            </div>
+                            <div class="filter-group">
+                                <select id="empleadoEstado" class="filter-select">
+                                    <option value="">Todos los estados</option>
+                                    <option value="activo">Activo</option>
+                                    <option value="inactivo">Inactivo</option>
+                                </select>
+                            </div>
+                            <button class="btn btn-secondary" id="empleadosFilterBtn">Filtrar</button>
+                            <button class="btn btn-ghost" id="empleadosClearBtn">Limpiar</button>
+                        </div>
+                        <button class="btn btn-primary" id="addEmpleadoBtn">+ Nuevo Empleado</button>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table" id="empleadosTable">
+                            <thead>
+                                <tr>
+                                    <th>Nombre</th>
+                                    <th>Cédula</th>
+                                    <th>Empresa</th>
+                                    <th>Cargo</th>
+                                    <th>Área</th>
+                                    <th>Estado</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="empleadosTableBody"></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- Documentos Section -->
+                <section class="section hidden" id="documentosSection">
+                    <div class="section-header">
+                        <div class="filters-panel" id="documentosFilters">
+                            <div class="filter-group">
+                                <select id="documentoEmpresa" class="filter-select">
+                                    <option value="">Todas las empresas</option>
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <select id="documentoTipo" class="filter-select">
+                                    <option value="">Todos los tipos</option>
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <select id="documentoEstado" class="filter-select">
+                                    <option value="">Todos los estados</option>
+                                    <option value="vigente">Vigente</option>
+                                    <option value="por_vencer">Por Vencer</option>
+                                    <option value="vencido">Vencido</option>
+                                </select>
+                            </div>
+                            <button class="btn btn-secondary" id="documentosFilterBtn">Filtrar</button>
+                            <button class="btn btn-ghost" id="documentosClearBtn">Limpiar</button>
+                        </div>
+                        <button class="btn btn-primary" id="addDocumentoBtn">+ Nuevo Documento</button>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table" id="documentosTable">
+                            <thead>
+                                <tr>
+                                    <th>Nombre</th>
+                                    <th>Tipo</th>
+                                    <th>Empresa</th>
+                                    <th>Emisión</th>
+                                    <th>Vencimiento</th>
+                                    <th>Estado</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="documentosTableBody"></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- Alertas Section -->
+                <section class="section hidden" id="alertasSection">
+                    <div class="section-header">
+                        <div class="filters-panel" id="alertasFilters">
+                            <div class="filter-group">
+                                <select id="alertaEmpresa" class="filter-select">
+                                    <option value="">Todas las empresas</option>
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <select id="alertaTipo" class="filter-select">
+                                    <option value="">Todos los tipos</option>
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <select id="alertaPrioridad" class="filter-select">
+                                    <option value="">Todas las prioridades</option>
+                                    <option value="alta">Alta</option>
+                                    <option value="media">Media</option>
+                                    <option value="baja">Baja</option>
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <select id="alertaEstado" class="filter-select">
+                                    <option value="">Todos los estados</option>
+                                    <option value="pendiente">Pendiente</option>
+                                    <option value="gestionada">Gestionada</option>
+                                    <option value="cerrada">Cerrada</option>
+                                </select>
+                            </div>
+                            <button class="btn btn-secondary" id="alertasFilterBtn">Filtrar</button>
+                            <button class="btn btn-ghost" id="alertasClearBtn">Limpiar</button>
+                        </div>
+                        <button class="btn btn-outline" id="generarAlertasBtn">🔄 Generar Alertas</button>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table" id="alertasTable">
+                            <thead>
+                                <tr>
+                                    <th>Empresa</th>
+                                    <th>Tipo</th>
+                                    <th>Mensaje</th>
+                                    <th>Prioridad</th>
+                                    <th>Fecha</th>
+                                    <th>Estado</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="alertasTableBody"></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- Procesos Section -->
+                <section class="section hidden" id="procesosSection">
+                    <div class="section-header">
+                        <div class="filters-panel">
+                            <div class="filter-group">
+                                <select id="procesoEmpresa" class="filter-select">
+                                    <option value="">Todas las empresas</option>
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <select id="procesoTipo" class="filter-select">
+                                    <option value="">Todos los tipos</option>
+                                    <option value="Estratégico">Estratégico</option>
+                                    <option value="Misional">Misional</option>
+                                    <option value="Apoyo">Apoyo</option>
+                                    <option value="Evaluación">Evaluación</option>
+                                </select>
+                            </div>
+                            <button class="btn btn-secondary" id="procesosFilterBtn">Filtrar</button>
+                        </div>
+                        <button class="btn btn-primary" id="addProcesoBtn">+ Nuevo Proceso</button>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table" id="procesosTable">
+                            <thead>
+                                <tr>
+                                    <th>Nombre</th>
+                                    <th>Tipo</th>
+                                    <th>Descripción</th>
+                                    <th>Responsable</th>
+                                    <th>Estado</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="procesosTableBody"></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- Matriz Riesgos Section -->
+                <section class="section hidden" id="riesgosSection">
+                    <div class="section-header">
+                        <div class="filters-panel" id="riesgosFilters">
+                            <div class="filter-group">
+                                <select id="riesgoEmpresa" class="filter-select">
+                                    <option value="">Todas las empresas</option>
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <select id="riesgoProceso" class="filter-select">
+                                    <option value="">Todos los procesos</option>
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <select id="riesgoNivel" class="filter-select">
+                                    <option value="">Todos los niveles</option>
+                                    <option value="I">I - Crítico</option>
+                                    <option value="II">II - Alto</option>
+                                    <option value="III">III - Medio</option>
+                                    <option value="IV">IV - Bajo</option>
+                                </select>
+                            </div>
+                            <button class="btn btn-secondary" id="riesgosFilterBtn">Filtrar</button>
+                        </div>
+                        <button class="btn btn-primary" id="addRiesgoBtn">+ Nuevo Riesgo</button>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table" id="riesgosTable">
+                            <thead>
+                                <tr>
+                                    <th>Proceso</th>
+                                    <th>Peligro</th>
+                                    <th>Riesgo (NR)</th>
+                                    <th>Interpretación</th>
+                                    <th>Aceptabilidad</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="riesgosTableBody"></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- Investigaciones Section -->
+                <section class="section hidden" id="investigacionesSection">
+                    <div class="section-header">
+                        <div class="filters-panel">
+                            <div class="filter-group">
+                                <select id="invEmpresa" class="filter-select">
+                                    <option value="">Todas las empresas</option>
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <select id="invTipo" class="filter-select">
+                                    <option value="">Todos los tipos</option>
+                                    <option value="Accidente">Accidente</option>
+                                    <option value="Incidente">Incidente</option>
+                                </select>
+                            </div>
+                            <button class="btn btn-secondary" id="invFilterBtn">Filtrar</button>
+                        </div>
+                        <button class="btn btn-primary" id="addInvBtn">+ Nueva Investigación</button>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table" id="invTable">
+                            <thead>
+                                <tr>
+                                    <th>Fecha</th>
+                                    <th>Empleado</th>
+                                    <th>Tipo</th>
+                                    <th>Descripción</th>
+                                    <th>Riesgo Vinculado</th>
+                                    <th>Estado</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="invTableBody"></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- Planes Acción Section -->
+                <section class="section hidden" id="planesSection">
+                    <div class="section-header">
+                        <div class="filters-panel">
+                            <div class="filter-group">
+                                <select id="planEmpresa" class="filter-select">
+                                    <option value="">Todas las empresas</option>
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <select id="planEstado" class="filter-select">
+                                    <option value="">Todos los estados</option>
+                                    <option value="programado">Programado</option>
+                                    <option value="en_curso">En Curso</option>
+                                    <option value="completado">Completado</option>
+                                </select>
+                            </div>
+                            <button class="btn btn-secondary" id="planFilterBtn">Filtrar</button>
+                        </div>
+                        <button class="btn btn-primary" id="addPlanBtn">+ Nuevo Plan</button>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table" id="planesTable">
+                            <thead>
+                                <tr>
+                                    <th>Actividad</th>
+                                    <th>Responsable</th>
+                                    <th>Fecha Propuesta</th>
+                                    <th>Fecha Cierre</th>
+                                    <th>Estado</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="planesTableBody"></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- Auditorias Section -->
+                <section class="section hidden" id="auditoriasSection">
+                    <div class="section-header">
+                        <div class="filters-panel">
+                            <div class="filter-group">
+                                <select id="auditEmpresa" class="filter-select">
+                                    <option value="">Todas las empresas</option>
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <select id="auditTipo" class="filter-select">
+                                    <option value="">Todos los tipos</option>
+                                    <option value="Interna">Interna</option>
+                                    <option value="Externa">Externa</option>
+                                    <option value="Revision_Direccion">Revisión por Dirección</option>
+                                </select>
+                            </div>
+                            <button class="btn btn-secondary" id="auditFilterBtn">Filtrar</button>
+                        </div>
+                        <button class="btn btn-primary" id="addAuditBtn">+ Nueva Auditoría</button>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table" id="auditoriasTable">
+                            <thead>
+                                <tr>
+                                    <th>Tipo</th>
+                                    <th>Fecha Programada</th>
+                                    <th>Fecha Ejecución</th>
+                                    <th>Auditor</th>
+                                    <th>Estado</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="auditoriasTableBody"></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- Reportes Section -->
+                <section class="section hidden" id="reportesSection">
+                    <div class="reports-grid">
+                        <div class="report-card" data-report="cumplimiento">
+                            <div class="report-icon">📋</div>
+                            <h3>Estado de Cumplimiento</h3>
+                            <p>Resumen del estado general SG-SST por empresa</p>
+                            <div class="report-actions">
+                                <button class="btn btn-primary btn-sm">📄 PDF</button>
+                                <button class="btn btn-secondary btn-sm">📊 Excel</button>
+                            </div>
+                        </div>
+                        <div class="report-card" data-report="documentos">
+                            <div class="report-icon">📄</div>
+                            <h3>Documentos</h3>
+                            <p>Lista de documentos vigentes, por vencer y vencidos</p>
+                            <div class="report-actions">
+                                <button class="btn btn-primary btn-sm">📄 PDF</button>
+                                <button class="btn btn-secondary btn-sm">📊 Excel</button>
+                            </div>
+                        </div>
+                        <div class="report-card" data-report="accidentes">
+                            <div class="report-icon">🚨</div>
+                            <h3>Accidentes e Incidentes</h3>
+                            <p>Registro de accidentes e incidentes laborales</p>
+                            <div class="report-actions">
+                                <button class="btn btn-primary btn-sm">📄 PDF</button>
+                                <button class="btn btn-secondary btn-sm">📊 Excel</button>
+                            </div>
+                        </div>
+                        <div class="report-card" data-report="capacitaciones">
+                            <div class="report-icon">🎓</div>
+                            <h3>Capacitaciones</h3>
+                            <p>Registro de capacitaciones realizadas</p>
+                            <div class="report-actions">
+                                <button class="btn btn-primary btn-sm">📄 PDF</button>
+                                <button class="btn btn-secondary btn-sm">📊 Excel</button>
+                            </div>
+                        </div>
+                        <div class="report-card" data-report="alertas">
+                            <div class="report-icon">🔔</div>
+                            <h3>Resumen de Alertas</h3>
+                            <p>Historial de alertas y acciones realizadas</p>
+                            <div class="report-actions">
+                                <button class="btn btn-primary btn-sm">📄 PDF</button>
+                                <button class="btn btn-secondary btn-sm">📊 Excel</button>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Usuarios Section -->
+                <section class="section hidden" id="usuariosSection">
+                    <div class="section-header">
+                        <div class="filters-panel" id="usuariosFilters">
+                            <div class="filter-group">
+                                <input type="text" id="usuarioBusqueda" class="filter-input" placeholder="Buscar...">
+                            </div>
+                            <div class="filter-group">
+                                <select id="usuarioRol" class="filter-select">
+                                    <option value="">Todos los roles</option>
+                                    <option value="admin">Administrador</option>
+                                    <option value="operador">Operador</option>
+                                    <option value="consulta">Consulta</option>
+                                </select>
+                            </div>
+                            <button class="btn btn-secondary" id="usuariosFilterBtn">Filtrar</button>
+                            <button class="btn btn-ghost" id="usuariosClearBtn">Limpiar</button>
+                        </div>
+                        <button class="btn btn-primary" id="addUsuarioBtn">+ Nuevo Usuario</button>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table" id="usuariosTable">
+                            <thead>
+                                <tr>
+                                    <th>Nombre</th>
+                                    <th>Email</th>
+                                    <th>Rol</th>
+                                    <th>Empresa</th>
+                                    <th>Estado</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="usuariosTableBody"></tbody>
+                        </table>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal Container -->
+    <div class="modal-overlay hidden" id="modalOverlay">
+        <div class="modal" id="modal">
+            <div class="modal-header">
+                <h3 id="modalTitle">Modal</h3>
+                <button class="modal-close" id="modalClose">×</button>
+            </div>
+            <div class="modal-body" id="modalBody"></div>
+            <div class="modal-footer" id="modalFooter"></div>
+        </div>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay hidden" id="loadingOverlay">
+        <div class="spinner"></div>
+    </div>
+
+    <!-- PDF/Excel Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+    <!-- Local Development Scripts -->
+    <script src="js/app.js"></script>
+    <script src="js/reports.js"></script>
+
+    <!-- Google Apps Script Production Scripts -->
+    <? if (typeof HtmlService !== 'undefined') { ?>
+    <?!= HtmlService.createHtmlOutputFromFile('app_js').getContent(); ?>
+    <?!= HtmlService.createHtmlOutputFromFile('reports_js').getContent(); ?>
+    <? } ?>
+</body>
+
+</html>
