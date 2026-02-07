@@ -226,6 +226,21 @@ function handleApiRequest(data) {
       case 'getEstandares': result = getEstandares(params.empresaId); break;
       case 'updateEstandar': result = updateEstandar(params); break;
       
+      // Autoevaluación (Phase 3)
+      case 'calculateComplianceScore': result = calculateComplianceScore(params); break;
+      case 'getAutoevaluacionHistory': result = getAutoevaluacionHistory(params.empresaId); break;
+      case 'saveAutoevaluacionSnapshot': result = saveAutoevaluacionSnapshot(params); break;
+      
+      // Indicadores Legales (Phase 3)
+      case 'calculateIndicadoresAuto': result = calculateIndicadoresAuto(params); break;
+      case 'getIndicadoresTimeSeries': result = getIndicadoresTimeSeries(params); break;
+      
+      // Alertas (System)
+      case 'getSystemAlerts': result = getSystemAlerts(params.empresaId); break;
+      
+      // Reports
+      case 'generatePDFReport': result = generatePDFReport(params.reportType, params.empresaId, params); break;
+      
       // Dashboard
       case 'getDashboardData': result = getDashboardData(params.empresaId); break;
       case 'getReporteAuditoriaCompleta': result = getReporteAuditoriaCompleta(params.empresaId); break;

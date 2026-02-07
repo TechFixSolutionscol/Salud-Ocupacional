@@ -1299,6 +1299,10 @@ async function loadDashboard() {
                 docsContainer.innerHTML = '<div class="loading">No hay documentos por vencer</div>';
             }
 
+            // Refresh System Alerts Badge if module is loaded
+            if (typeof refreshAlerts === 'function') refreshAlerts();
+
+
             // Update alerts badge
             document.getElementById('alertasBadge').textContent = stats.alertasPendientes;
         }
@@ -2227,12 +2231,44 @@ function showModal(title, bodyContent, footerButtons = []) {
 
     document.getElementById('modalOverlay').classList.remove('hidden');
 }
+// ============================================
+// MODAL FUNCTIONS
+// ============================================
 
 function closeModal() {
-    document.getElementById('modalOverlay').classList.add('hidden');
+    // Close existing modalOverlay if it exists (legacy)
+    const legacyModal = document.getElementById('modalOverlay');
+    if (legacyModal) legacyModal.classList.add('hidden');
+
+    // Close generic modal
+    const genericModal = document.getElementById('genericModal');
+    if (genericModal) genericModal.classList.add('hidden');
 }
 
-// ============================================
+function openGenericModal(title, bodyCallbackOrString, onClose) {
+    const modal = document.getElementById('genericModal');
+    if (!modal) return;
+
+    document.getElementById('genericModalTitle').textContent = title;
+
+    const bodyContainer = document.getElementById('genericModalBody');
+    bodyContainer.innerHTML = ''; // Clear previous content
+
+    if (typeof bodyCallbackOrString === 'function') {
+        bodyCallbackOrString(bodyContainer);
+    } else {
+        bodyContainer.innerHTML = bodyCallbackOrString;
+    }
+
+    modal.classList.remove('hidden');
+
+    // Attach onClose handler if provided
+    if (onClose) {
+        // We might want to attach this to the close button explicitly
+        // For simplicity, we assume caller handles cleanup or we do it here
+    }
+}
+
 // TOAST NOTIFICATIONS
 // ============================================
 
@@ -3300,14 +3336,14 @@ function renderPlanesTable(planes) {
             <td>${formatDate(plan.fecha_cierre)}</td>
             <td><span class="status-badge ${plan.estado}">${plan.estado}</span></td>
             <td class="table-actions">
-                <button class="btn btn-sm btn-secondary">✏️</button>
+                <button class="btn btn-sm btn-secondary" onclick="showPlanModal('${plan.plan_id}')">✏️</button>
             </td>
         </tr>
     `).join('');
 }
 
-function showPlanModal() {
-    openPlanModal();
+function showPlanModal(id) {
+    openPlanModal(id);
 }
 
 // ============================================
@@ -3608,68 +3644,95 @@ async function openPlanModal(id = null) {
         return;
     }
 
-    // Fetch Risks for Dropdown
+    // 1. Fetch Plan Data if Edit
+    if (isEdit) {
+        try {
+            const res = await callBackend('getPlanesIntervencion', { empresaId: state.currentEmpresa });
+            if (res.success && res.data) {
+                plan = res.data.find(p => p.plan_id === id) || {};
+            }
+        } catch (e) {
+            console.error('Error fetching plan details:', e);
+            showToast('Error al cargar datos del plan', 'error');
+        }
+    }
+
+    // 2. Fetch Risks for Dropdown
     let riesgosOpts = '<option value="">-- Sin vincular --</option>';
     try {
-        const riesgosRes = await callBackend('getMatrizRiesgos', { empresaId: state.currentEmpresa });
-        if (riesgosRes.success) {
+        const riesgosRes = await callBackend('getMatrizRiesgos', { empresa_id: state.currentEmpresa });
+        if (riesgosRes.success && riesgosRes.data) {
             riesgosOpts += riesgosRes.data.map(r =>
-                `< option value = "${r.riesgo_id}" ${plan.riesgo_id === r.riesgo_id ? 'selected' : ''}> ${r.peligro_descripcion} (${r.nivel_riesgo})</option > `
+                `<option value="${r.riesgo_id}" ${plan.riesgo_id === r.riesgo_id ? 'selected' : ''}>${r.peligro_descripcion} (${r.nivel_riesgo})</option>`
             ).join('');
         }
-    } catch (e) { console.error(e); }
+    } catch (e) { console.error('Error fetching risks:', e); }
+
+    // 3. Fetch Employees for Responsible Dropdown
+    let empleadosOpts = '<option value="">Seleccionar responsable...</option>';
+    try {
+        const empRes = await callBackend('getEmpleados', { empresa_id: state.currentEmpresa });
+        if (empRes.success && empRes.data) {
+            empleadosOpts += empRes.data
+                .filter(e => !e.estado || e.estado.toLowerCase() === 'active' || e.estado.toLowerCase() === 'activo')
+                .map(e => `<option value="${e.cedula || e.id}" ${plan.responsable_id == (e.cedula || e.id) ? 'selected' : ''}>${e.nombre} ${e.apellidos || ''}</option>`)
+                .join('');
+        }
+    } catch (e) { console.error('Error fetching employees:', e); }
 
     const modalBody = `
-        < form id = "planForm" >
+        <form id="planForm">
             <input type="hidden" name="plan_id" value="${plan.plan_id || ''}">
 
+            <div class="form-group">
+                <label class="form-label">Actividad de Intervención</label>
+                <input type="text" name="actividad_intervencion" class="form-input" value="${plan.actividad_intervencion || ''}" required placeholder="Descripción de la acción">
+            </div>
+
+            <div class="form-row">
                 <div class="form-group">
-                    <label class="form-label">Actividad de Intervención</label>
-                    <input type="text" name="actividad_intervencion" class="form-input" value="${plan.actividad_intervencion || ''}" required placeholder="Descripción de la acción">
-                </div>
-
-                <div class="form-row">
-                    <div class="form-group">
-                        <label class="form-label">Responsable</label>
-                        <input type="text" name="responsable_id" class="form-input" value="${plan.responsable_id || ''}" placeholder="Nombre o ID">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Fecha Límite</label>
-                        <input type="date" name="fecha_limite" class="form-input" value="${plan.fecha_limite ? plan.fecha_limite.split('T')[0] : ''}" required>
-                    </div>
-                </div>
-
-                <div class="form-group box-highlight">
-                    <label class="form-label">🔗 Origen (Riesgo Asociado)</label>
-                    <select name="riesgo_id" class="form-select">
-                        ${riesgosOpts}
+                    <label class="form-label">Responsable</label>
+                    <select name="responsable_id" class="form-select" required>
+                        ${empleadosOpts}
                     </select>
                 </div>
-
-                <div class="form-row">
-                    <div class="form-group">
-                        <label class="form-label">Estado</label>
-                        <select name="estado" class="form-select">
-                            <option value="programado" ${plan.estado === 'programado' ? 'selected' : ''}>Programado</option>
-                            <option value="en_curso" ${plan.estado === 'en_curso' ? 'selected' : ''}>En Curso</option>
-                            <option value="completado" ${plan.estado === 'completado' ? 'selected' : ''}>Completado</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Prioridad</label>
-                        <select name="prioridad" class="form-select">
-                            <option value="alta" ${plan.prioridad === 'alta' ? 'selected' : ''}>Alta</option>
-                            <option value="media" ${plan.prioridad === 'media' ? 'selected' : 'selected'}>Media</option>
-                            <option value="baja" ${plan.prioridad === 'baja' ? 'selected' : ''}>Baja</option>
-                        </select>
-                    </div>
-                </div>
-
                 <div class="form-group">
-                    <label class="form-label">Recursos Necesarios</label>
-                    <textarea name="recursos" class="form-textarea">${plan.recursos || ''}</textarea>
+                    <label class="form-label">Fecha Límite</label>
+                    <input type="date" name="fecha_limite" class="form-input" value="${plan.fecha_limite ? plan.fecha_limite.split('T')[0] : ''}" required>
                 </div>
-            </form>
+            </div>
+
+            <div class="form-group box-highlight">
+                <label class="form-label">🔗 Origen (Riesgo Asociado)</label>
+                <select name="riesgo_id" class="form-select">
+                    ${riesgosOpts}
+                </select>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Estado</label>
+                    <select name="estado" class="form-select">
+                        <option value="programado" ${plan.estado === 'programado' ? 'selected' : ''}>Programado</option>
+                        <option value="en_curso" ${plan.estado === 'en_curso' ? 'selected' : ''}>En Curso</option>
+                        <option value="completado" ${plan.estado === 'completado' ? 'selected' : ''}>Completado</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Prioridad</label>
+                    <select name="prioridad" class="form-select">
+                        <option value="alta" ${plan.prioridad === 'alta' ? 'selected' : ''}>Alta</option>
+                        <option value="media" ${plan.prioridad === 'media' ? 'selected' : 'selected'}>Media</option>
+                        <option value="baja" ${plan.prioridad === 'baja' ? 'selected' : ''}>Baja</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Recursos Necesarios</label>
+                <textarea name="recursos" class="form-textarea">${plan.recursos || ''}</textarea>
+            </div>
+        </form>
     `;
 
     openModal(isEdit ? 'Editar Plan de Acción' : 'Nuevo Plan de Acción', modalBody, () => savePlan(isEdit));

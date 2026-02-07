@@ -1,0 +1,258 @@
+/* ============================================
+   INDICADORES MODULE STYLES
+   ============================================ */
+
+/* Metadata Bar */
+.indicadores-metadata {
+    display: flex;
+    gap: var(--spacing-xl);
+    padding: var(--spacing-lg);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--spacing-xl);
+}
+
+.metadata-item {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+}
+
+.metadata-label {
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+
+.metadata-item strong {
+    color: var(--text-primary);
+    font-size: 1.125rem;
+}
+
+/* Indicadores Group */
+.indicadores-group {
+    margin-bottom: var(--spacing-xl);
+}
+
+.group-title {
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: var(--spacing-md);
+    padding-left: var(--spacing-sm);
+    border-left: 3px solid var(--accent-primary);
+}
+
+/* Indicadores Grid */
+.indicadores-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: var(--spacing-lg);
+    margin-bottom: var(--spacing-lg);
+}
+
+/* Indicador Card */
+.indicador-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-lg);
+    transition: all var(--transition-normal);
+    position: relative;
+    overflow: hidden;
+}
+
+.indicador-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 4px;
+    height: 100%;
+    background: var(--accent-primary);
+    transition: width var(--transition-normal);
+}
+
+.indicador-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+    border-color: var(--accent-primary);
+}
+
+.indicador-card:hover::before {
+    width: 6px;
+}
+
+/* Alert Level Variants */
+.indicador-card.nivel-normal::before {
+    background: var(--accent-success);
+}
+
+.indicador-card.nivel-alerta::before {
+    background: var(--accent-warning);
+}
+
+.indicador-card.nivel-critico::before {
+    background: var(--accent-danger);
+}
+
+/* Indicador Header */
+.indicador-header {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-md);
+}
+
+.indicador-icono {
+    font-size: 1.75rem;
+}
+
+.indicador-nombre {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+/* Indicador Valor */
+.indicador-valor {
+    font-size: 2.5rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: var(--spacing-sm);
+    line-height: 1;
+}
+
+.indicador-valor .unidad {
+    font-size: 1rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin-left: var(--spacing-xs);
+}
+
+/* Indicador Formula */
+.indicador-formula {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    font-family: 'Courier New', monospace;
+    background: var(--bg-primary);
+    padding: var(--spacing-sm);
+    border-radius: var(--radius-sm);
+    margin-bottom: var(--spacing-md);
+    border-left: 2px solid var(--border-color);
+}
+
+/* Indicador Nivel Badge */
+.indicador-nivel {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.nivel-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border-radius: var(--radius-sm);
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.nivel-badge.nivel-normal {
+    background: rgba(63, 185, 80, 0.1);
+    color: var(--accent-success);
+}
+
+.nivel-badge.nivel-alerta {
+    background: rgba(210, 153, 34, 0.1);
+    color: var(--accent-warning);
+}
+
+.nivel-badge.nivel-critico {
+    background: rgba(248, 81, 73, 0.1);
+    color: var(--accent-danger);
+}
+
+/* Section Actions */
+.section-actions {
+    display: flex;
+    gap: var(--spacing-md);
+    justify-content: center;
+    margin-top: var(--spacing-xl);
+    padding-top: var(--spacing-xl);
+    border-top: 1px solid var(--border-color);
+}
+
+/* Indicador Hint */
+.indicador-hint {
+    text-align: center;
+    margin-top: var(--spacing-sm);
+    padding-top: var(--spacing-sm);
+    border-top: 1px solid var(--border-color);
+}
+
+.indicador-hint small {
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    opacity: 0.7;
+    transition: opacity var(--transition-normal);
+}
+
+.indicador-card:hover .indicador-hint small {
+    opacity: 1;
+    color: var(--accent-primary);
+}
+
+/* Chart Container */
+.chart-container {
+    margin-bottom: var(--spacing-md);
+}
+
+.chart-stats {
+    display: flex;
+    justify-content: space-around;
+    gap: var(--spacing-md);
+    padding: var(--spacing-lg);
+    background: var(--bg-secondary);
+    border-radius: var(--radius-md);
+    margin-top: var(--spacing-lg);
+}
+
+/* Responsive Design */
+@media (max-width: 1200px) {
+    .indicadores-grid {
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    }
+}
+
+@media (max-width: 768px) {
+    .indicadores-metadata {
+        flex-direction: column;
+        gap: var(--spacing-md);
+    }
+
+    .indicadores-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .indicador-valor {
+        font-size: 2rem;
+    }
+
+    .section-actions {
+        flex-direction: column;
+    }
+
+    .section-actions .btn {
+        width: 100%;
+    }
+
+    .chart-stats {
+        flex-direction: column;
+        text-align: center;
+    }
+}

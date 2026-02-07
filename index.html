@@ -9,11 +9,17 @@
     <!-- Local Development Styles -->
     <link rel="stylesheet" href="css/styles.css">
     <link rel="stylesheet" href="css/login.css">
+    <link rel="stylesheet" href="css/autoevaluacion.css">
+    <link rel="stylesheet" href="css/indicadores.css">
+    <link rel="stylesheet" href="css/alertas.css">
 
     <!-- Google Apps Script Production Styles -->
     <? if (typeof HtmlService !== 'undefined') { ?>
     <?!= HtmlService.createHtmlOutputFromFile('styles').getContent(); ?>
     <?!= HtmlService.createHtmlOutputFromFile('login_styles').getContent(); ?>
+    <?!= HtmlService.createHtmlOutputFromFile('autoevaluacion_styles').getContent(); ?>
+    <?!= HtmlService.createHtmlOutputFromFile('indicadores_styles').getContent(); ?>
+    <?!= HtmlService.createHtmlOutputFromFile('alertas_styles').getContent(); ?>
     <? } ?>
 
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -107,6 +113,10 @@
                     <span class="nav-icon">📈</span>
                     <span class="nav-text">Reportes de Ley</span>
                 </a>
+                <a href="#" class="nav-item" data-section="indicadores">
+                    <span class="nav-icon">📊</span>
+                    <span class="nav-text">Indicadores SST</span>
+                </a>
                 <a href="#" class="nav-item" data-section="alertas">
                     <span class="nav-icon">🔔</span>
                     <span class="nav-text">Alertas</span>
@@ -177,6 +187,53 @@
                     </div>
 
                     <div class="dashboard-grid">
+                        <!-- Autoevaluación Widget -->
+                        <div class="card autoevaluacion-card">
+                            <div class="card-header">
+                                <h3>📊 Autoevaluación SG-SST</h3>
+                                <small id="autoevalTimestamp"></small>
+                            </div>
+                            <div class="card-body">
+                                <div class="compliance-gauge-container">
+                                    <div class="compliance-gauge" id="complianceGauge">
+                                        <svg viewBox="0 0 200 120" class="gauge-svg">
+                                            <!-- Background Arc -->
+                                            <path d="M 20 110 A 90 90 0 0 1 180 110" fill="none" stroke="#e0e0e0"
+                                                stroke-width="20" />
+                                            <!-- Score Arc (will be updated dynamically) -->
+                                            <path id="gaugeArc" d="M 20 110 A 90 90 0 0 1 180 110" fill="none"
+                                                stroke="#4caf50" stroke-width="20" stroke-dasharray="282.7"
+                                                stroke-dashoffset="282.7" />
+                                            <!-- Center Text -->
+                                            <text x="100" y="80" text-anchor="middle" class="gauge-score"
+                                                id="gaugeScore">0%</text>
+                                            <text x="100" y="100" text-anchor="middle" class="gauge-label"
+                                                id="gaugeLabel">CRÍTICO</text>
+                                        </svg>
+                                    </div>
+                                    <div class="compliance-details">
+                                        <div class="detail-row">
+                                            <span>Estándares Completados:</span>
+                                            <strong id="standardsCompleted">0 / 0</strong>
+                                        </div>
+                                        <div class="detail-row">
+                                            <span>Acción Requerida:</span>
+                                            <p id="actionRequired" class="action-text">-</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- PHVA Breakdown -->
+                                <div class="phva-breakdown">
+                                    <h4>Desglose por Ciclo PHVA</h4>
+                                    <div class="phva-bars" id="phvaBreakdown">
+                                        <!-- Will be populated dynamically -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Quick Stats Card -->
                         <div class="card">
                             <div class="card-header">
                                 <h3>Estado de Cumplimiento</h3>
@@ -652,6 +709,86 @@
                     </div>
                 </section>
 
+                <!-- Indicadores de Ley Section -->
+                <section class="section hidden" id="indicadoresSection">
+                    <div class="section-header">
+                        <h2>📊 Indicadores de Seguridad y Salud en el Trabajo</h2>
+                        <div class="section-controls">
+                            <select id="indicadoresYear" class="filter-select">
+                                <!-- Populated dynamically with recent years -->
+                            </select>
+                            <select id="indicadoresMonth" class="filter-select">
+                                <option value="1">Enero</option>
+                                <option value="2">Febrero</option>
+                                <option value="3">Marzo</option>
+                                <option value="4">Abril</option>
+                                <option value="5">Mayo</option>
+                                <option value="6">Junio</option>
+                                <option value="7">Julio</option>
+                                <option value="8">Agosto</option>
+                                <option value="9">Septiembre</option>
+                                <option value="10">Octubre</option>
+                                <option value="11">Noviembre</option>
+                                <option value="12">Diciembre</option>
+                            </select>
+                            <button class="btn btn-secondary" id="refreshIndicadoresBtn">🔄 Actualizar</button>
+                        </div>
+                    </div>
+
+                    <div class="indicadores-metadata" id="indicadoresMetadata">
+                        <div class="metadata-item">
+                            <span class="metadata-label">👥 Trabajadores Activos:</span>
+                            <strong id="metaTrabajadores">-</strong>
+                        </div>
+                        <div class="metadata-item">
+                            <span class="metadata-label">📅 Días Laborables:</span>
+                            <strong id="metaDiasLaborables">-</strong>
+                        </div>
+                        <div class="metadata-item">
+                            <span class="metadata-label">✅ Última Actualización:</span>
+                            <strong id="metaTimestamp">-</strong>
+                        </div>
+                    </div>
+
+                    <!-- Indicadores Mensuales -->
+                    <div class="indicadores-group">
+                        <h3 class="group-title">INDICADORES MENSUALES</h3>
+                        <div class="indicadores-grid" id="indicadoresMensuales">
+                            <!-- Cards populated dynamically -->
+                        </div>
+                    </div>
+
+                    <!-- Indicadores Anuales -->
+                    <div class="indicadores-group">
+                        <h3 class="group-title">INDICADORES ANUALES</h3>
+                        <div class="indicadores-grid" id="indicadoresAnuales">
+                            <!-- Cards populated dynamically -->
+                        </div>
+                    </div>
+
+                    <div class="section-actions">
+                        <button class="btn btn-primary" id="exportIndicadoresPDF">📥 Exportar PDF</button>
+                        <button class="btn btn-secondary" id="exportIndicadoresExcel">📊 Exportar Excel</button>
+                    </div>
+                </section>
+
+                </section>
+
+                <!-- Alertas Section -->
+                <section class="section hidden" id="alertasSection">
+                    <div class="section-header">
+                        <h2>🔔 Centro de Alertas y Notificaciones</h2>
+                        <button class="btn btn-secondary btn-sm" onclick="refreshAlerts()">🔄 Actualizar</button>
+                    </div>
+
+                    <div class="alerts-container" id="alertsList">
+                        <!-- Alerts populated dynamically -->
+                        <div class="empty-state">
+                            <p>Cargando alertas...</p>
+                        </div>
+                    </div>
+                </section>
+
                 <!-- Usuarios Section -->
                 <section class="section hidden" id="usuariosSection">
                     <div class="section-header">
@@ -750,6 +887,22 @@
     <!-- Toast Notifications -->
     <div class="toast-container" id="toastContainer"></div>
 
+    <!-- Generic Modal -->
+    <div class="modal-overlay hidden" id="genericModal">
+        <div class="modal-container">
+            <div class="modal-header">
+                <h3 class="modal-title" id="genericModalTitle">Modal Title</h3>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="genericModalBody">
+                <!-- Content injected via JS -->
+            </div>
+            <div class="modal-footer hidden" id="genericModalFooter">
+                <!-- Buttons injected via JS -->
+            </div>
+        </div>
+    </div>
+
     <!-- Loading Overlay -->
     <div class="loading-overlay hidden" id="loadingOverlay">
         <div class="spinner"></div>
@@ -759,14 +912,23 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
+    <!-- Chart.js for Indicators -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
     <!-- Local Development Scripts -->
     <script src="js/app.js"></script>
     <script src="js/reports.js"></script>
+    <script src="js/autoevaluacion.js"></script>
+    <script src="js/indicadores.js"></script>
+    <script src="js/alertas.js"></script>
 
     <!-- Google Apps Script Production Scripts -->
     <? if (typeof HtmlService !== 'undefined') { ?>
     <?!= HtmlService.createHtmlOutputFromFile('app_js').getContent(); ?>
     <?!= HtmlService.createHtmlOutputFromFile('reports_js').getContent(); ?>
+    <?!= HtmlService.createHtmlOutputFromFile('autoevaluacion_js').getContent(); ?>
+    <?!= HtmlService.createHtmlOutputFromFile('indicadores_js').getContent(); ?>
+    <?!= HtmlService.createHtmlOutputFromFile('alertas_js').getContent(); ?>
     <? } ?>
 </body>
 

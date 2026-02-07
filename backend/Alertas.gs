@@ -1,418 +1,355 @@
 /**
- * SG-SST Management System - Alertas Module
- * Alert management and generation
+ * SG-SST Management System - Alerts Module
+ * Centralized alert system for expiring documents, pending actions, and critical indicators.
  */
-
-// Alert type constants
-const ALERT_TYPES = {
-  DOC_POR_VENCER: 'Documento próximo a vencer',
-  DOC_VENCIDO: 'Documento vencido',
-  CAP_PENDIENTE: 'Capacitación pendiente',
-  ACC_SIN_INV: 'Accidente sin investigar',
-  EXAMEN_VENCIDO: 'Examen médico vencido'
-};
-
-// ============================================
-// ALERT GENERATION HELPERS
-// ============================================
 
 /**
- * Generate alert for a single document
- * Called when creating/updating documents or during bulk alert generation
+ * Get all system alerts for a company
+ * @param {string} empresaId
  */
-function generarAlertaDocumento(documento) {
+function getSystemAlerts(empresaId) {
   try {
-    // Calculate document status
-    const estado = calculateDocumentStatus(documento.fecha_vencimiento);
-    
-    // Only generate alert if document is expiring or expired
-    if (estado !== 'por_vencer' && estado !== 'vencido') {
-      return false;
-    }
-    
-    // Determine alert type and priority
-    const tipo = estado === 'vencido' ? 'DOC_VENCIDO' : 'DOC_POR_VENCER';
-    const prioridad = estado === 'vencido' ? 'alta' : 'media';
-    
-    // Create alert record
-    const alerta = {
-      alerta_id: generateUUID(),
-      empresa_id: documento.empresa_id,
-      tipo_alerta: tipo,
-      referencia_tipo: 'documentos',
-      referencia_id: documento.documento_id,
-      mensaje: `Documento ${estado}: ${documento.nombre}`,
-      fecha_alerta: getCurrentDate(),
-      fecha_limite: documento.fecha_vencimiento,
-      prioridad: prioridad,
-      estado: 'pendiente',
-      responsable: documento.responsable || ''
-    };
-    
-    // Insert alert
-    insertRow(SHEETS.ALERTAS, alerta);
-    
-    Logger.log(`✅ Alerta generada para documento: ${documento.nombre} (${estado})`);
-    return true;
-    
-  } catch (error) {
-    Logger.log(`❌ Error generando alerta para documento: ${error.message}`);
-    return false;
-  }
-}
+    if (!empresaId) throw new Error('Empresa ID is required');
 
-// ============================================
-// GET OPERATIONS
-// ============================================
-
-/**
- * Get all alerts with optional filters
- */
-function getAlertas(filters = {}) {
-  try {
-    const data = getSheetDataFiltered(SHEETS.ALERTAS, filters);
-    return { success: true, data: data };
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
-}
-
-/**
- * Get alerts by company
- */
-function getAlertasByEmpresa(empresaId) {
-  try {
-    if (!empresaId) {
-      throw new Error('empresa_id is required');
-    }
-    return getAlertas({ empresa_id: empresaId });
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
-}
-
-/**
- * Get pending alerts by company
- */
-function getAlertasPendientes(empresaId) {
-  try {
-    const filters = { estado: 'pendiente' };
-    if (empresaId) {
-      filters.empresa_id = empresaId;
-    }
-    return getAlertas(filters);
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
-}
-
-/**
- * Get a single alert by ID
- */
-function getAlertaById(alertaId) {
-  try {
-    if (!alertaId) {
-      throw new Error('alerta_id is required');
-    }
+    const alerts = [];
     
-    const found = findRowById(SHEETS.ALERTAS, 'alerta_id', alertaId);
-    
-    if (!found) {
-      return { success: false, error: 'Alert not found' };
-    }
-    
-    const alerta = {};
-    found.headers.forEach((header, index) => {
-      alerta[header] = found.data[index];
+    // 1. Check Document Expirations
+    const docAlerts = checkDocumentosVencidos(empresaId);
+    alerts.push(...docAlerts);
+
+    // 2. Check Pending Action Plans
+    const planAlerts = checkPlanesVencidos(empresaId);
+    alerts.push(...planAlerts);
+
+    // 3. Check Critical Indicators (Current Month)
+    const indAlerts = checkIndicadoresCriticos(empresaId);
+    alerts.push(...indAlerts);
+
+    // 4. Sort alerts by priority (CRÍTICO > ALERTA > INFO)
+    alerts.sort((a, b) => {
+      const priority = { 'CRÍTICO': 3, 'ALERTA': 2, 'INFO': 1 };
+      return (priority[b.nivel] || 0) - (priority[a.nivel] || 0);
     });
-    
-    return { success: true, data: alerta };
-    
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
-}
 
-// ============================================
-// UPDATE OPERATION
-// ============================================
-
-/**
- * Update an existing alert
- */
-function updateAlerta(data) {
-  try {
-    if (!data.alerta_id) {
-      throw new Error('alerta_id is required');
-    }
-    
-    // Validate estado if provided
-    if (data.estado && !['pendiente', 'gestionada', 'cerrada'].includes(data.estado)) {
-      throw new Error('Invalid estado. Must be "pendiente", "gestionada" or "cerrada"');
-    }
-    
-    // Validate prioridad if provided
-    if (data.prioridad && !['alta', 'media', 'baja'].includes(data.prioridad)) {
-      throw new Error('Invalid prioridad. Must be "alta", "media" or "baja"');
-    }
-    
-    // Update the record
-    updateRow(SHEETS.ALERTAS, 'alerta_id', data.alerta_id, data);
-    
-    return { success: true, message: 'Alert updated successfully' };
-    
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
-}
-
-/**
- * Mark alert as handled
- */
-function marcarAlertaGestionada(alertaId) {
-  try {
-    return updateAlerta({ alerta_id: alertaId, estado: 'gestionada' });
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
-}
-
-/**
- * Close an alert
- */
-function cerrarAlerta(alertaId) {
-  try {
-    return updateAlerta({ alerta_id: alertaId, estado: 'cerrada' });
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
-}
-
-// ============================================
-// ALERT GENERATION
-// ============================================
-
-/**
- * Generate alerts for a company (or all companies if no ID provided)
- */
-function generarAlertas(empresaId = null) {
-  try {
-    let empresas;
-    
-    if (empresaId) {
-      const empresa = getEmpresaById(empresaId);
-      if (!empresa.success) {
-        throw new Error('Company not found');
-      }
-      empresas = [empresa.data];
-    } else {
-      const result = getEmpresas({ estado: 'activo' });
-      empresas = result.data || [];
-    }
-    
-    let alertasGeneradas = 0;
-    
-    for (const empresa of empresas) {
-      // Generate document alerts
-      alertasGeneradas += generarAlertasDocumentos(empresa.empresa_id);
-      
-      // Generate medical exam alerts
-      alertasGeneradas += generarAlertasExamenesMedicos(empresa.empresa_id);
-    }
-    
-    return { 
-      success: true, 
-      message: `${alertasGeneradas} alert(s) generated`,
-      alertasGeneradas: alertasGeneradas
-    };
-    
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
-}
-
-/**
- * Generate alerts for expiring/expired documents
- */
-function generarAlertasDocumentos(empresaId) {
-  try {
-    // Get documents for the company
-    const documentos = getSheetDataFiltered(SHEETS.DOCUMENTOS_SST, { empresa_id: empresaId });
-    
-    // Get existing alerts to avoid duplicates
-    const alertasExistentes = getSheetDataFiltered(SHEETS.ALERTAS, { 
-      empresa_id: empresaId,
-      referencia_tipo: 'documentos'
-    });
-    
-    const alertedDocIds = alertasExistentes
-      .filter(a => a.estado !== 'cerrada')
-      .map(a => a.referencia_id);
-    
-    let count = 0;
-    
-    for (const doc of documentos) {
-      // Skip if alert already exists
-      if (alertedDocIds.includes(doc.documento_id)) continue;
-      
-      const estado = calculateDocumentStatus(doc.fecha_vencimiento);
-      
-      if (estado === 'vencido' || estado === 'por_vencer') {
-        generarAlertaDocumento(doc);
-        count++;
-      }
-    }
-    
-    return count;
-    
-  } catch (error) {
-    console.error('Error generating document alerts:', error);
-    return 0;
-  }
-}
-
-/**
- * Generate alerts for medical exams (from documents of type EXAMEN_MEDICO)
- */
-function generarAlertasExamenesMedicos(empresaId) {
-  try {
-    const examenes = getSheetDataFiltered(SHEETS.DOCUMENTOS_SST, { 
-      empresa_id: empresaId,
-      tipo_documento: 'EXAMEN_MEDICO'
-    });
-    
-    const alertasExistentes = getSheetDataFiltered(SHEETS.ALERTAS, { 
-      empresa_id: empresaId,
-      tipo_alerta: 'EXAMEN_VENCIDO'
-    });
-    
-    const alertedIds = alertasExistentes
-      .filter(a => a.estado !== 'cerrada')
-      .map(a => a.referencia_id);
-    
-    let count = 0;
-    
-    for (const examen of examenes) {
-      if (alertedIds.includes(examen.documento_id)) continue;
-      
-      if (isExpired(examen.fecha_vencimiento)) {
-        const alerta = {
-          alerta_id: generateUUID(),
-          empresa_id: empresaId,
-          tipo_alerta: 'EXAMEN_VENCIDO',
-          referencia_tipo: 'documentos',
-          referencia_id: examen.documento_id,
-          mensaje: `Examen médico vencido: ${examen.nombre}`,
-          fecha_alerta: getCurrentDate(),
-          fecha_limite: examen.fecha_vencimiento,
-          prioridad: 'alta',
-          estado: 'pendiente',
-          responsable: examen.responsable
-        };
-        
-        insertRow(SHEETS.ALERTAS, alerta);
-        count++;
-      }
-    }
-    
-    return count;
-    
-  } catch (error) {
-    console.error('Error generating medical exam alerts:', error);
-    return 0;
-  }
-}
-
-// ============================================
-// WHATSAPP INTEGRATION (MANUAL)
-// ============================================
-
-/**
- * Generate WhatsApp link for an alert
- */
-function generarEnlaceWhatsApp(alertaId, telefono) {
-  try {
-    const alertaResult = getAlertaById(alertaId);
-    if (!alertaResult.success) {
-      throw new Error('Alert not found');
-    }
-    
-    const alerta = alertaResult.data;
-    
-    // Get company info
-    const empresaResult = getEmpresaById(alerta.empresa_id);
-    const empresaNombre = empresaResult.success ? empresaResult.data.nombre : 'N/A';
-    
-    // Build message
-    const mensaje = encodeURIComponent(
-      `🔔 *ALERTA SG-SST*\n\n` +
-      `Empresa: ${empresaNombre}\n` +
-      `Tipo: ${ALERT_TYPES[alerta.tipo_alerta] || alerta.tipo_alerta}\n` +
-      `Mensaje: ${alerta.mensaje}\n` +
-      `Prioridad: ${alerta.prioridad.toUpperCase()}\n` +
-      `Fecha límite: ${alerta.fecha_limite || 'N/A'}\n\n` +
-      `Por favor tomar las acciones necesarias.`
-    );
-    
-    // Clean phone number
-    let cleanPhone = telefono.toString().replace(/[\s\-\(\)\+]/g, '');
-    if (!cleanPhone.startsWith('57')) {
-      cleanPhone = '57' + cleanPhone;
-    }
-    
-    const whatsappUrl = `https://wa.me/${cleanPhone}?text=${mensaje}`;
-    
-    return { success: true, url: whatsappUrl };
-    
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
-}
-
-// ============================================
-// HELPER FUNCTIONS
-// ============================================
-
-/**
- * Get alert types for dropdown
- */
-function getAlertTypesDropdown() {
-  try {
-    const dropdown = Object.entries(ALERT_TYPES).map(([value, label]) => ({
-      value: value,
-      label: label
-    }));
-    return { success: true, data: dropdown };
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
-}
-
-/**
- * Get alert summary for dashboard
- */
-function getAlertasSummary(empresaId = null) {
-  try {
-    const filters = {};
-    if (empresaId) {
-      filters.empresa_id = empresaId;
-    }
-    
-    const alertas = getSheetDataFiltered(SHEETS.ALERTAS, filters);
-    
     return {
       success: true,
-      data: {
-        total: alertas.length,
-        pendientes: alertas.filter(a => a.estado === 'pendiente').length,
-        gestionadas: alertas.filter(a => a.estado === 'gestionada').length,
-        cerradas: alertas.filter(a => a.estado === 'cerrada').length,
-        prioridadAlta: alertas.filter(a => a.prioridad === 'alta' && a.estado === 'pendiente').length,
-        prioridadMedia: alertas.filter(a => a.prioridad === 'media' && a.estado === 'pendiente').length,
-        prioridadBaja: alertas.filter(a => a.prioridad === 'baja' && a.estado === 'pendiente').length
-      }
+      data: alerts,
+      count: alerts.length
     };
+
+  } catch (error) {
+    Logger.log('Error getting system alerts: ' + error.message);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Trigger 1: Document Expirations
+ * Rules:
+ * - Expired (< 0 days): CRÍTICO
+ * - Expiring soon (< 30 days): ALERTA
+ */
+function checkDocumentosVencidos(empresaId) {
+  const alerts = [];
+  try {
+    const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+    const sheet = ss.getSheetByName('documentos');
+    if (!sheet) return [];
+
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0];
+    
+    const empresaIdCol = headers.indexOf('empresa_id');
+    const nombreCol = headers.indexOf('nombre');
+    const fechaVencCol = headers.indexOf('fecha_vencimiento');
+    const estadoCol = headers.indexOf('estado'); // vigente, vencido, etc.
+
+    if (empresaIdCol === -1 || fechaVencCol === -1) return [];
+
+    const today = new Date();
+    
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      if (row[empresaIdCol] == empresaId) {
+        // Skip if explicitly marked as obsolete or historical if applicable
+        // Assuming we check dates regardless of manual status to be safe, or check 'vigente'
+        
+        const fechaVenc = row[fechaVencCol];
+        if (fechaVenc && fechaVenc instanceof Date) {
+          const diffTime = fechaVenc - today;
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          const docName = row[nombreCol] || 'Documento sin nombre';
+
+          if (diffDays < 0) {
+            alerts.push({
+              id: `doc_${i}`,
+              tipo: 'DOCUMENTO',
+              mensaje: `El documento "${docName}" está vencido por ${Math.abs(diffDays)} días.`,
+              fecha: fechaVenc, // formatted later
+              nivel: 'CRÍTICO',
+              accion: 'Renovar inmediatamente',
+              enlace: 'documentos' // section to navigate
+            });
+          } else if (diffDays <= 30) {
+            alerts.push({
+              id: `doc_${i}`,
+              tipo: 'DOCUMENTO',
+              mensaje: `El documento "${docName}" vence en ${diffDays} días.`,
+              fecha: fechaVenc,
+              nivel: 'ALERTA',
+              accion: 'Programar renovación',
+              enlace: 'documentos'
+            });
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.error('Error checking documents: ' + e.message);
+  }
+  return alerts;
+}
+
+/**
+ * Trigger 2: Pending Action Plans
+ * Rules:
+ * - Past deadline & Open: CRÍTICO
+ * - Deadline within 7 days & Open: ALERTA
+ */
+function checkPlanesVencidos(empresaId) {
+  const alerts = [];
+  try {
+    // Assuming 'planes_accion' sheet exists from previous context
+    const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+    const sheet = ss.getSheetByName('planes_accion');
+    if (!sheet) return [];
+
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0];
+    
+    const empresaIdCol = headers.indexOf('empresa_id');
+    const hallazgoCol = headers.indexOf('hallazgo'); // or description
+    const fechaLimiteCol = headers.indexOf('fecha_limite');
+    const estadoCol = headers.indexOf('estado'); // abierto, cerrado, en_progreso
+
+    if (empresaIdCol === -1 || fechaLimiteCol === -1 || estadoCol === -1) return [];
+
+    const today = new Date();
+
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      if (row[empresaIdCol] == empresaId) {
+        const estado = row[estadoCol].toString().toLowerCase();
+        
+        if (estado !== 'cerrado' && estado !== 'completado') {
+          const fechaLimite = row[fechaLimiteCol];
+          if (fechaLimite && fechaLimite instanceof Date) {
+            const diffTime = fechaLimite - today;
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            const hallazgo = row[hallazgoCol] || 'Plan de acción';
+
+            if (diffDays < 0) {
+              alerts.push({
+                id: `plan_${i}`,
+                tipo: 'PLAN_ACCION',
+                mensaje: `Plan de acción vencido: "${hallazgo}" (${Math.abs(diffDays)} días de retraso).`,
+                fecha: fechaLimite,
+                nivel: 'CRÍTICO',
+                accion: 'Cerrar plan inmediatamente',
+                enlace: 'planes'
+              });
+            } else if (diffDays <= 7) {
+              alerts.push({
+                id: `plan_${i}`,
+                tipo: 'PLAN_ACCION',
+                mensaje: `Plan de acción vence pronto: "${hallazgo}" (${diffDays} días restantes).`,
+                fecha: fechaLimite,
+                nivel: 'ALERTA',
+                accion: 'Verificar avances',
+                enlace: 'planes'
+              });
+            }
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.error('Error checking plans: ' + e.message);
+  }
+  return alerts;
+}
+
+/**
+ * Trigger 3: Critical Indicators (Current Month)
+ * Rules:
+ * - Check current month's calculated indicators
+ * - If status is 'critico' or 'alerta'
+ */
+function checkIndicadoresCriticos(empresaId) {
+  const alerts = [];
+  try {
+    const today = new Date();
+    const currentYear = today.getFullYear();
+    const currentMonth = today.getMonth() + 1;
+
+    // Reuse existing calculation logic
+    // Ensure calculateIndicadoresAuto and related functions are available in scope
+    if (typeof calculateIndicadoresAuto !== 'function') return [];
+
+    const result = calculateIndicadoresAuto({
+        empresaId: empresaId,
+        year: currentYear,
+        month: currentMonth
+    });
+
+    if (result.success && result.data && result.data.mensuales) {
+        result.data.mensuales.forEach(ind => {
+            if (ind.nivel === 'critico') {
+                alerts.push({
+                    id: `ind_${ind.id}`,
+                    tipo: 'INDICADOR',
+                    mensaje: `Indicador Crítico: ${ind.nombre} (${ind.valor}${ind.unidad})`,
+                    fecha: today,
+                    nivel: 'CRÍTICO',
+                    accion: 'Analizar causas y crear plan de acción',
+                    enlace: 'indicadores'
+                });
+            } else if (ind.nivel === 'alerta') {
+                alerts.push({
+                    id: `ind_${ind.id}`,
+                    tipo: 'INDICADOR',
+                    mensaje: `Alerta en Indicador: ${ind.nombre} (${ind.valor}${ind.unidad})`,
+                    fecha: today,
+                    nivel: 'ALERTA',
+                    accion: 'Revisar tendencia',
+                    enlace: 'indicadores'
+                });
+            }
+        });
+    }
+
+  } catch (e) {
+    console.error('Error checking indicators: ' + e.message);
+  }
+  return alerts;
+}
+
+// ============================================
+// AUTOMATION & TRIGGERS
+// ============================================
+
+/**
+ * AUTOMATIC DAILY CHECK
+ * Should be set to run daily (e.g., 6:00 AM) via Apps Script Triggers.
+ */
+function monitorDailyAlerts() {
+  try {
+    console.log('Starting Daily Alerts Monitor...');
+    
+    // 1. Get all active companies
+    const empresasRes = getEmpresas();
+    if (!empresasRes.success || !empresasRes.data) {
+        console.warn('Could not fetch companies');
+        return;
+    }
+    
+    // Convert object or array
+    const empresasList = Array.isArray(empresasRes.data) ? empresasRes.data : [];
+    const summaryReport = [];
+
+    empresasList.forEach(empresa => {
+      // 2. Check alerts for each company
+      const alerts = getSystemAlerts(empresa.id);
+      
+      if (alerts.success && alerts.count > 0) {
+        // Filter for critical/warning only
+        const criticalAlerts = alerts.data.filter(a => a.nivel === 'CRÍTICO' || a.nivel === 'ALERTA');
+        
+        if (criticalAlerts.length > 0) {
+          summaryReport.push({
+            empresa: empresa.nombre_empresa || empresa.nombre || 'Empresa ID:' + empresa.id,
+            alerts: criticalAlerts
+          });
+        }
+      }
+    });
+
+    console.log(`Daily Monitor Completed. Found alerts for ${summaryReport.length} companies.`);
+    
+    if (summaryReport.length > 0) {
+      const adminEmail = Session.getActiveUser().getEmail();
+      if (adminEmail) {
+        sendAdminSummaryEmail(adminEmail, summaryReport);
+      }
+    }
+
+  } catch (error) {
+    console.error('Error in monitorDailyAlerts: ' + error.message);
+  }
+}
+
+/**
+ * Install the Daily Trigger Programmatically
+ * Run this function ONCE to set up the automation.
+ */
+function installAlertsTrigger() {
+  try {
+    // Check if trigger already exists to avoid duplicates
+    const triggers = ScriptApp.getProjectTriggers();
+    const existing = triggers.find(t => t.getHandlerFunction() === 'monitorDailyAlerts');
+    
+    if (existing) {
+      return { success: true, message: 'Trigger already exists.' };
+    }
+
+    // Create daily trigger at 6 AM
+    ScriptApp.newTrigger('monitorDailyAlerts')
+      .timeBased()
+      .everyDays(1)
+      .atHour(6)
+      .create();
+
+    return { success: true, message: 'Daily trigger installed successfully.' };
+
   } catch (error) {
     return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Send summary email to Admin
+ */
+function sendAdminSummaryEmail(email, report) {
+  try {
+    const subject = `[SG-SST] Resumen Diario de Alertas - ${new Date().toLocaleDateString()}`;
+    let body = 'Resumen de Alertas del Sistema SG-SST:\n\n';
+
+    // Limit body size for email limits (simple check)
+    let count = 0;
+    
+    report.forEach(item => {
+      if (count > 20) return; // Limit to 20 companies in email body to avoid overflow
+      
+      body += `Empresa: ${item.empresa}\n`;
+      body += `Alertas Críticas/Advertencias: ${item.alerts.length}\n`;
+      item.alerts.forEach(alert => {
+          body += `  - [${alert.nivel}] ${alert.tipo}: ${alert.mensaje}\n`;
+      });
+      body += '\n------------------\n';
+      count++;
+    });
+    
+    if (report.length > 20) {
+        body += `\n... y ${report.length - 20} empresas más con alertas.`;
+    }
+
+    MailApp.sendEmail({
+      to: email,
+      subject: subject,
+      body: body
+    });
+    console.log('Admin summary email sent to ' + email);
+  } catch (e) {
+    console.error('Failed to send email: ' + e.message);
   }
 }
