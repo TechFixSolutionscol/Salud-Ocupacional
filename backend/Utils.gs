@@ -344,3 +344,34 @@ function valueExists(sheetName, field, value, excludeId = null, idField = null) 
     return row[field] === value;
   });
 }
+
+/**
+ * Find a row matching a predicate function
+ */
+function findRow(sheetName, predicate) {
+  const sheet = getSheet(sheetName);
+  const data = sheet.getDataRange().getValues();
+  
+  if (data.length <= 1) return null;
+  
+  const headers = data[0];
+  
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    // Convert to object for the predicate
+    const rowObj = {};
+    headers.forEach((header, index) => {
+      rowObj[header] = row[index];
+    });
+    
+    if (predicate(rowObj)) {
+      return { 
+        rowIndex: i + 1, 
+        data: rowObj, 
+        headers: headers 
+      };
+    }
+  }
+  
+  return null;
+}

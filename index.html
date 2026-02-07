@@ -61,46 +61,56 @@
                     <span class="nav-icon">📊</span>
                     <span class="nav-text">Dashboard</span>
                 </a>
+
+                <div class="nav-group-header">PLANEAR</div>
                 <a href="#" class="nav-item" data-section="empresas">
                     <span class="nav-icon">🏢</span>
-                    <span class="nav-text">Empresas</span>
-                </a>
-                <a href="#" class="nav-item" data-section="empleados">
-                    <span class="nav-icon">👥</span>
-                    <span class="nav-text">Empleados</span>
+                    <span class="nav-text">Empresa y Rcursos</span>
                 </a>
                 <a href="#" class="nav-item" data-section="documentos">
                     <span class="nav-icon">📄</span>
-                    <span class="nav-text">Documentos SST</span>
+                    <span class="nav-text">Estándares y Docs</span>
                 </a>
-                <a href="#" class="nav-item" data-section="procesos">
-                    <span class="nav-icon">🔄</span>
-                    <span class="nav-text">Procesos</span>
-                </a>
+
+                <div class="nav-group-header">HACER</div>
                 <a href="#" class="nav-item" data-section="riesgos">
                     <span class="nav-icon">⚠️</span>
-                    <span class="nav-text">Matriz Riesgos</span>
+                    <span class="nav-text">Matriz Peligros</span>
                 </a>
                 <a href="#" class="nav-item" data-section="investigaciones">
                     <span class="nav-icon">🛡️</span>
                     <span class="nav-text">Investigaciones</span>
                 </a>
+                <a href="#" class="nav-item" data-section="empleados">
+                    <span class="nav-icon">👥</span>
+                    <span class="nav-text">Empleados (Salud)</span>
+                </a>
+                <a href="#" class="nav-item" data-section="procesos">
+                    <span class="nav-icon">🔄</span>
+                    <span class="nav-text">Procesos</span>
+                </a>
+
+                <div class="nav-group-header">VERIFICAR</div>
+                <a href="#" class="nav-item" data-section="auditorias">
+                    <span class="nav-icon">🔍</span>
+                    <span class="nav-text">Auditorías</span>
+                </a>
+
+                <div class="nav-group-header">ACTUAR</div>
                 <a href="#" class="nav-item" data-section="planes">
                     <span class="nav-icon">📋</span>
                     <span class="nav-text">Planes Acción</span>
                 </a>
-                <a href="#" class="nav-item" data-section="auditorias">
-                    <span class="nav-icon">🛡️</span>
-                    <span class="nav-text">Auditorías</span>
+
+                <div class="nav-group-header">REPORTE Y GESTIÓN</div>
+                <a href="#" class="nav-item" data-section="reportes">
+                    <span class="nav-icon">📈</span>
+                    <span class="nav-text">Reportes de Ley</span>
                 </a>
                 <a href="#" class="nav-item" data-section="alertas">
                     <span class="nav-icon">🔔</span>
                     <span class="nav-text">Alertas</span>
                     <span class="nav-badge" id="alertasBadge">0</span>
-                </a>
-                <a href="#" class="nav-item" data-section="reportes">
-                    <span class="nav-icon">📈</span>
-                    <span class="nav-text">Reportes</span>
                 </a>
                 <a href="#" class="nav-item" data-section="usuarios">
                     <span class="nav-icon">⚙️</span>
@@ -296,48 +306,48 @@
                     </div>
                 </section>
 
-                <!-- Documentos Section -->
+                <!-- Estándares y Documentos Section (Renamed from Documentos) -->
                 <section class="section hidden" id="documentosSection">
                     <div class="section-header">
-                        <div class="filters-panel" id="documentosFilters">
-                            <div class="filter-group">
-                                <select id="documentoEmpresa" class="filter-select">
-                                    <option value="">Todas las empresas</option>
-                                </select>
-                            </div>
-                            <div class="filter-group">
-                                <select id="documentoTipo" class="filter-select">
-                                    <option value="">Todos los tipos</option>
-                                </select>
-                            </div>
-                            <div class="filter-group">
-                                <select id="documentoEstado" class="filter-select">
-                                    <option value="">Todos los estados</option>
-                                    <option value="vigente">Vigente</option>
-                                    <option value="por_vencer">Por Vencer</option>
-                                    <option value="vencido">Vencido</option>
-                                </select>
-                            </div>
-                            <button class="btn btn-secondary" id="documentosFilterBtn">Filtrar</button>
-                            <button class="btn btn-ghost" id="documentosClearBtn">Limpiar</button>
+                        <div class="header-info">
+                            <h3>Estándares Mínimos SG-SST (Res. 0312/2019)</h3>
+                            <p class="text-muted" id="standardsSubtitle">Clasificación: Cargando...</p>
                         </div>
-                        <button class="btn btn-primary" id="addDocumentoBtn">+ Nuevo Documento</button>
+                        <div class="progress-card">
+                            <span class="progress-label">Avance General</span>
+                            <div class="progress-bar-container">
+                                <div class="progress-bar" id="standardsProgress" style="width: 0%"></div>
+                            </div>
+                            <span class="progress-value" id="standardsProgressText">0%</span>
+                        </div>
                     </div>
-                    <div class="table-container">
-                        <table class="data-table" id="documentosTable">
-                            <thead>
-                                <tr>
-                                    <th>Nombre</th>
-                                    <th>Tipo</th>
-                                    <th>Empresa</th>
-                                    <th>Emisión</th>
-                                    <th>Vencimiento</th>
-                                    <th>Estado</th>
-                                    <th>Acciones</th>
-                                </tr>
-                            </thead>
-                            <tbody id="documentosTableBody"></tbody>
-                        </table>
+
+                    <!-- PHVA Tabs -->
+                    <div class="tabs-container">
+                        <button class="tab-btn active" data-tab="planear">I. PLANEAR</button>
+                        <button class="tab-btn" data-tab="hacer">II. HACER</button>
+                        <button class="tab-btn" data-tab="verificar">III. VERIFICAR</button>
+                        <button class="tab-btn" data-tab="actuar">IV. ACTUAR</button>
+                    </div>
+
+                    <!-- Filter Bar -->
+                    <div class="filters-panel">
+                        <div class="filter-group">
+                            <input type="text" id="stdSearch" class="filter-input" placeholder="Buscar estándar...">
+                        </div>
+                        <div class="filter-group">
+                            <select id="stdFilterState" class="filter-select">
+                                <option value="all">Todos los estados</option>
+                                <option value="CUMPLE">Cumple</option>
+                                <option value="NO_CUMPLE">No Cumple</option>
+                                <option value="SIN_EVALUAR">Sin Evaluar</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Standards List Container -->
+                    <div class="standards-list-container" id="standardsList">
+                        <div class="loading">Cargando estándares aplicables...</div>
                     </div>
                 </section>
 
@@ -691,6 +701,49 @@
             </div>
             <div class="modal-body" id="modalBody"></div>
             <div class="modal-footer" id="modalFooter"></div>
+        </div>
+    </div>
+
+    <!-- Wizard Clasificación Modal (Hidden by default) -->
+    <div class="modal-overlay hidden" id="wizardOverlay">
+        <div class="wizard-modal">
+            <div class="wizard-header">
+                <h3>🏢 Clasificación de la Empresa</h3>
+                <p>Para configurar los estándares aplicables (Res. 0312/2019), necesitamos clasificar su empresa.</p>
+            </div>
+            <div class="wizard-body">
+                <form id="wizardForm">
+                    <div class="wizard-step active" data-step="1">
+                        <h4>Paso 1: Información Básica</h4>
+                        <div class="form-group">
+                            <label class="form-label">Número de Trabajadores (Incluyendo contratistas/misión)</label>
+                            <input type="number" id="wizTrabajadores" class="form-input" min="1" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Nivel de Riesgo (Clase de Riesgo más alta del centro de
+                                trabajo)</label>
+                            <select id="wizRiesgo" class="form-select" required>
+                                <option value="">Seleccione...</option>
+                                <option value="I">I - Mínimo</option>
+                                <option value="II">II - Bajo</option>
+                                <option value="III">III - Medio</option>
+                                <option value="IV">IV - Alto</option>
+                                <option value="V">V - Máximo</option>
+                            </select>
+                        </div>
+                        <div class="wizard-result hidden" id="wizResult">
+                            <div class="result-card">
+                                <h5>Su Clasificación:</h5>
+                                <p id="wizClassificationText">Esperando datos...</p>
+                                <span class="badge" id="wizStandardBadge">...</span>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="wizard-footer">
+                <button class="btn btn-primary" id="wizSaveBtn" disabled>Guardar y Configurar Estándares</button>
+            </div>
         </div>
     </div>
 

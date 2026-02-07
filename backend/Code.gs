@@ -31,7 +31,8 @@ const SHEETS = {
   PLAN_INTERVENCION: 'plan_intervencion',
   INVESTIGACIONES: 'investigaciones_accidentes',
   CAPACITACIONES: 'capacitaciones',
-  AUDITORIAS: 'auditorias'
+  AUDITORIAS: 'auditorias',
+  CUMPLIMIENTO: 'cumplimiento_estandares'
 };
 
 // ============================================
@@ -198,8 +199,12 @@ function handleApiRequest(data) {
 
       // Auditorias
       case 'getAuditorias': result = getAuditorias(params.empresaId); break;
-      case 'createAuditoria': result = createAuditoria(params); break;
+       case 'createAuditoria': result = createAuditoria(params); break;
       case 'updateAuditoria': result = updateAuditoria(params); break;
+      
+      // Compliance (Phase 2)
+      case 'getEstandares': result = getEstandares(params.empresaId); break;
+      case 'updateEstandar': result = updateEstandar(params); break;
       
       // Dashboard
       case 'getDashboardData': result = getDashboardData(params.empresaId); break;
@@ -239,7 +244,8 @@ function initializeSystem() {
     const sheetsConfig = {
       [SHEETS.EMPRESAS]: [
         'empresa_id', 'nombre', 'nit', 'direccion', 'telefono', 'email',
-        'representante_legal', 'responsable_sst', 'estado', 'fecha_registro'
+        'representante_legal', 'responsable_sst', 'estado', 'fecha_registro',
+        'nivel_riesgo', 'numero_trabajadores', 'clasificacion_tipo'
       ],
       [SHEETS.EMPLEADOS]: [
         'empleado_id', 'empresa_id', 'nombre', 'cedula', 'cargo', 'area',
@@ -290,6 +296,10 @@ function initializeSystem() {
       [SHEETS.AUDITORIAS]: [
         'auditoria_id', 'empresa_id', 'tipo', 'fecha_programada', 'fecha_ejecucion', 
         'auditor', 'alcance', 'hallazgos', 'estado', 'fecha_registro'
+      ],
+      [SHEETS.CUMPLIMIENTO]: [
+        'cumplimiento_id', 'empresa_id', 'codigo_estandar', 'estado', // estado: CUMPLE, NO_CUMPLE, NO_APLICA
+        'observacion', 'evidencia_doc_id', 'plan_accion_id', 'fecha_verificacion', 'usuario_verificador'
       ]
     };
     

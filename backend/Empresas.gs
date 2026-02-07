@@ -83,6 +83,10 @@ function createEmpresa(data) {
       email: (data.email || '').trim(),
       representante_legal: data.representante_legal.trim(),
       responsable_sst: data.responsable_sst.trim(),
+      responsable_sst: data.responsable_sst.trim(),
+      nivel_riesgo: data.nivel_riesgo || '',
+      numero_trabajadores: data.numero_trabajadores || 0,
+      clasificacion_tipo: data.clasificacion_tipo || '', // E.g., 'ESTANDARES_MINIMOS_7', '...21', '...60'
       estado: 'activo',
       fecha_registro: getCurrentDate()
     };

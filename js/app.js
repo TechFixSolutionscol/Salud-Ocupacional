@@ -385,7 +385,7 @@ function setupEventListeners() {
     // Section-specific event listeners
     setupEmpresasEvents();
     setupEmpleadosEvents();
-    setupDocumentosEvents();
+    // setupDocumentosEvents(); // Removed - Replaced by setupStandardsEvents
     setupAlertasEvents();
     setupReportesEvents();
     setupUsuariosEvents();
@@ -394,6 +394,745 @@ function setupEventListeners() {
     setupInvestigacionesEvents();
     setupPlanesEvents();
     setupAuditoriasEvents();
+    setupStandardsEvents();
+}
+
+// ============================================
+// REPORTES AVANZADOS (PHASE 3)
+// ============================================
+
+function setupReportesEvents() {
+    // Handle specific report button clicks within the cards
+    document.querySelectorAll('.report-actions button').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const card = e.target.closest('.report-card');
+            const type = card.dataset.report;
+            const format = e.target.textContent.includes('PDF') ? 'pdf' : 'excel';
+
+            generateFullReport(type, state.currentEmpresa, format);
+        });
+    });
+}
+
+function loadReportes() {
+    // Just ensure the section is visible. 
+    // The cards are static HTML for now, but could be dynamic updates later.
+}
+
+// ============================================
+// MATRIZ DE RIESGOS (GTC-45)
+// ============================================
+
+let riesgosData = [];
+
+function setupRiesgosEvents() {
+    document.getElementById('addRiesgoBtn').addEventListener('click', () => openRiesgoModal());
+    document.getElementById('riesgosFilterBtn').addEventListener('click', filterRiesgos);
+}
+
+async function loadRiesgos() {
+    const empresaId = state.currentEmpresa;
+    if (!empresaId) return;
+
+    const tableBody = document.getElementById('riesgosTableBody');
+    tableBody.innerHTML = '<tr><td colspan="6" class="loading"><div class="spinner"></div> Cargando matriz...</td></tr>';
+
+    try {
+        // Need processes for context
+        const [riesgosResult, procesosResult] = await Promise.all([
+            callBackend('getMatrizRiesgos', { empresaId }),
+            callBackend('getProcesos', { empresaId }) // We assume this exists or returns empty
+        ]);
+
+        if (riesgosResult.success) {
+            riesgosData = riesgosResult.data;
+            state.procesos = procesosResult.success ? procesosResult.data : []; // Cache processes
+            renderRiesgosTable(riesgosData);
+            populateRiesgosFilters();
+        } else {
+            tableBody.innerHTML = `<tr><td colspan="6" class="error-msg">Error: ${riesgosResult.error}</td></tr>`;
+        }
+    } catch (error) {
+        console.error(error);
+        tableBody.innerHTML = '<tr><td colspan="6" class="error-msg">Error de conexión</td></tr>';
+    }
+}
+
+function renderRiesgosTable(data) {
+    const tableBody = document.getElementById('riesgosTableBody');
+    if (data.length === 0) {
+        tableBody.innerHTML = '<tr><td colspan="6" class="text-center">No hay riesgos registrados.</td></tr>';
+        return;
+    }
+
+    tableBody.innerHTML = data.map(r => {
+        let badgeClass = 'success';
+        if (r.interpretacion_nr === 'I') badgeClass = 'danger';
+        if (r.interpretacion_nr === 'II') badgeClass = 'warning';
+        if (r.interpretacion_nr === 'III') badgeClass = 'info';
+
+        return `
+        <tr>
+            <td>
+                <div class="fw-bold">${r.proceso_id || 'N/A'}</div>
+                <small class="text-muted">${r.actividad || ''}</small>
+            </td>
+            <td>
+                <div class="fw-bold">${r.peligro_descripcion}</div>
+                <small class="text-muted">${r.peligro_clasificacion}</small>
+            </td>
+            <td class="text-center">
+                <div class="fs-5 fw-bold">${r.nivel_riesgo}</div>
+            </td>
+            <td class="text-center">
+                <span class="badge badge-${badgeClass}">Nivel ${r.interpretacion_nr}</span>
+            </td>
+            <td>${r.aceptabilidad}</td>
+            <td>
+                <div class="table-actions">
+                    <button class="btn-icon" onclick="openRiesgoModal('${r.riesgo_id}')" title="Editar">✏️</button>
+                    <button class="btn-icon text-danger" onclick="deleteRiesgo('${r.riesgo_id}')" title="Eliminar">🗑️</button>
+                </div>
+            </td>
+        </tr>
+        `;
+    }).join('');
+}
+
+function populateRiesgosFilters() {
+    // Populate Process Select
+    const select = document.getElementById('riesgoProceso');
+    const uniqueProcesos = [...new Set(riesgosData.map(r => r.proceso_id).filter(Boolean))];
+    select.innerHTML = '<option value="">Todos los procesos</option>' +
+        uniqueProcesos.map(p => `<option value="${p}">${p}</option>`).join('');
+}
+
+function filterRiesgos() {
+    const proc = document.getElementById('riesgoProceso').value;
+    const nivel = document.getElementById('riesgoNivel').value; // I, II, III, IV
+
+    const filtered = riesgosData.filter(r => {
+        return (!proc || r.proceso_id === proc) &&
+            (!nivel || r.interpretacion_nr === nivel);
+    });
+
+    renderRiesgosTable(filtered);
+}
+
+// Modal & Form Logic
+function openRiesgoModal(id = null) {
+    const isEdit = !!id;
+    const riesgo = isEdit ? riesgosData.find(r => r.riesgo_id === id) : {};
+
+    // GTC-45 Options
+    const deficienciaOpts = [
+        { val: '10', label: '10 - Muy Alto' }, { val: '6', label: '6 - Alto' },
+        { val: '2', label: '2 - Medio' }, { val: '0', label: '0 - Bajo' }
+    ];
+    const exposicionOpts = [
+        { val: '4', label: '4 - Continua' }, { val: '3', label: '3 - Frecuente' },
+        { val: '2', label: '2 - Ocasional' }, { val: '1', label: '1 - Esporádica' }
+    ];
+    const consecuenciaOpts = [
+        { val: '100', label: '100 - Mortal/Catastrófico' }, { val: '60', label: '60 - Muy Grave' },
+        { val: '25', label: '25 - Grave' }, { val: '10', label: '10 - Leve' }
+    ];
+
+    const modalBody = `
+        <form id="riesgoForm">
+            <input type="hidden" name="riesgo_id" value="${riesgo.riesgo_id || ''}">
+            
+            <div class="wizard-step active">
+                <h4>1. Identificación</h4>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Proceso</label>
+                        <input type="text" name="proceso_id" class="form-input" value="${riesgo.proceso_id || ''}" required list="procesosList">
+                        <datalist id="procesosList">
+                            ${(state.procesos || []).map(p => `<option value="${p.nombre}">`).join('')}
+                        </datalist>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Actividad</label>
+                        <input type="text" name="actividad" class="form-input" value="${riesgo.actividad || ''}" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Descripción del Peligro</label>
+                    <input type="text" name="peligro_descripcion" class="form-input" value="${riesgo.peligro_descripcion || ''}" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Clasificación (GTC 45)</label>
+                    <select name="peligro_clasificacion" class="form-select">
+                        <option value="Biológico" ${riesgo.peligro_clasificacion === 'Biológico' ? 'selected' : ''}>Biológico</option>
+                        <option value="Físico" ${riesgo.peligro_clasificacion === 'Físico' ? 'selected' : ''}>Físico</option>
+                        <option value="Químico" ${riesgo.peligro_clasificacion === 'Químico' ? 'selected' : ''}>Químico</option>
+                        <option value="Psicosocial" ${riesgo.peligro_clasificacion === 'Psicosocial' ? 'selected' : ''}>Psicosocial</option>
+                        <option value="Biomecánico" ${riesgo.peligro_clasificacion === 'Biomecánico' ? 'selected' : ''}>Biomecánico</option>
+                        <option value="Condiciones de Seguridad" ${riesgo.peligro_clasificacion === 'Condiciones de Seguridad' ? 'selected' : ''}>Condiciones de Seguridad</option>
+                        <option value="Fenómenos Naturales" ${riesgo.peligro_clasificacion === 'Fenómenos Naturales' ? 'selected' : ''}>Fenómenos Naturales</option>
+                    </select>
+                </div>
+                
+                <h4>2. Evaluación (GTC 45)</h4>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Nivel Deficiencia (ND)</label>
+                        <select name="nivel_deficiencia" id="calcND" class="form-select" onchange="calculateGTC45Live()">
+                            ${deficienciaOpts.map(o => `<option value="${o.val}" ${riesgo.nivel_deficiencia == o.val ? 'selected' : ''}>${o.label}</option>`).join('')}
+                        </select>
+                    </div>
+                     <div class="form-group">
+                        <label class="form-label">Nivel Exposición (NE)</label>
+                        <select name="nivel_exposicion" id="calcNE" class="form-select" onchange="calculateGTC45Live()">
+                            ${exposicionOpts.map(o => `<option value="${o.val}" ${riesgo.nivel_exposicion == o.val ? 'selected' : ''}>${o.label}</option>`).join('')}
+                        </select>
+                    </div>
+                </div>
+                <div class="stats-grid" style="grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+                    <div class="stat-card" style="padding: 0.5rem;">NP: <strong id="resNP">0</strong></div>
+                    <div class="stat-card" style="padding: 0.5rem;" id="resIntNP">...</div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Nivel Consecuencia (NC)</label>
+                    <select name="nivel_consecuencia" id="calcNC" class="form-select" onchange="calculateGTC45Live()">
+                        ${consecuenciaOpts.map(o => `<option value="${o.val}" ${riesgo.nivel_consecuencia == o.val ? 'selected' : ''}>${o.label}</option>`).join('')}
+                    </select>
+                </div>
+
+                <div class="result-card" style="background:var(--bg-hover); padding:1rem; border-radius:8px;">
+                     <div style="display:flex; justify-content:space-between;">
+                        <span>Nivel Riesgo (NR): <strong id="resNR">0</strong></span>
+                        <span class="badge" id="resIntNR">...</span>
+                     </div>
+                     <div style="margin-top:0.5rem; font-weight:bold; text-align:center;" id="resAcept">...</div>
+                </div>
+
+                <h4 style="margin-top:1rem;">3. Intervención</h4>
+                <div class="form-group">
+                    <label class="form-label">Medidas de Intervención</label>
+                    <textarea name="medidas_intervencion" class="form-textarea" placeholder="Eliminación, Sustitución, Controles...">${riesgo.medidas_intervencion || ''}</textarea>
+                </div>
+            </div>
+        </form>
+    `;
+
+    openModal(isEdit ? 'Editar Riesgo' : 'Nuevo Riesgo', modalBody, () => saveRiesgo(isEdit));
+    calculateGTC45Live(); // Initial calc
+}
+
+window.calculateGTC45Live = function () {
+    const nd = parseInt(document.getElementById('calcND').value) || 0;
+    const ne = parseInt(document.getElementById('calcNE').value) || 0;
+    const nc = parseInt(document.getElementById('calcNC').value) || 0;
+
+    const np = nd * ne;
+    const nr = np * nc;
+
+    document.getElementById('resNP').textContent = np;
+
+    // Interpretacion NP
+    let intNp = 'Bajo';
+    if (np >= 40) intNp = 'Muy Alto';
+    else if (np >= 24) intNp = 'Alto';
+    else if (np >= 10) intNp = 'Medio';
+    document.getElementById('resIntNP').textContent = intNp;
+
+    document.getElementById('resNR').textContent = nr;
+
+    // Interpretacion NR
+    let intNr = 'IV';
+    let color = 'success';
+    let acept = 'ACEPTABLE';
+
+    if (nr >= 600) { intNr = 'I'; color = 'danger'; acept = 'NO ACEPTABLE'; }
+    else if (nr >= 150) { intNr = 'II'; color = 'warning'; acept = 'NO ACEPTABLE O ACEPTABLE CON CONTROL'; }
+    else if (nr >= 40) { intNr = 'III'; color = 'info'; acept = 'MEJORABLE'; }
+
+    const badge = document.getElementById('resIntNR');
+    badge.textContent = `Nivel ${intNr}`;
+    badge.className = `badge badge-${color}`;
+
+    const aceptDiv = document.getElementById('resAcept');
+    aceptDiv.textContent = acept;
+    aceptDiv.style.color = (color === 'danger' || color === 'warning') ? 'var(--accent-danger)' : 'var(--accent-success)';
+};
+
+async function saveRiesgo(isEdit) {
+    const form = document.getElementById('riesgoForm');
+    const formData = new FormData(form);
+    const data = Object.fromEntries(formData.entries());
+
+    data.empresa_id = state.currentEmpresa; // Ensure company context
+
+    const action = isEdit ? 'updateRiesgo' : 'createRiesgo';
+
+    showToast('Guardando...', 'info');
+
+    try {
+        const result = await callBackend(action, data);
+        if (result.success) {
+            showToast('Riesgo guardado exitosamente', 'success');
+            closeModal();
+            loadRiesgos();
+        } else {
+            showToast('Error: ' + result.error, 'error');
+        }
+    } catch (error) {
+        showToast('Error de conexión', 'error');
+    }
+}
+
+window.deleteRiesgo = async function (id) {
+    if (!confirm('¿Está seguro de eliminar este riesgo?')) return;
+
+    try {
+        const result = await callBackend('deleteRiesgo', { riesgo_id: id });
+        if (result.success) {
+            showToast('Riesgo eliminado', 'success');
+            loadRiesgos();
+        } else {
+            showToast('Error: ' + result.error, 'error');
+        }
+    } catch (e) { /*...*/ }
+};
+
+
+// ============================================
+// ESTANDARES Y DOCUMENTOS (PHASE 2)
+// ============================================
+
+let standardsData = []; // Store loaded standards
+let currentTab = 'planear'; // Default tab
+
+function setupStandardsEvents() {
+    // 1. Tab Switching
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            e.target.classList.add('active');
+            currentTab = e.target.dataset.tab; // planear, hacer, verificar, actuar
+            filterAndRenderStandards();
+        });
+    });
+
+    // 2. Filters
+    document.getElementById('stdSearch').addEventListener('input', filterAndRenderStandards);
+    document.getElementById('stdFilterState').addEventListener('change', filterAndRenderStandards);
+}
+
+async function loadStandards() {
+    const empresaId = state.currentEmpresa;
+    if (!empresaId) return;
+
+    const listContainer = document.getElementById('standardsList');
+    listContainer.innerHTML = '<div class="loading"><div class="spinner"></div> Cargando estándares...</div>';
+
+    try {
+        const result = await callBackend('getEstandares', { empresaId });
+        if (result.success) {
+            standardsData = result.data;
+
+            // Update Header Info
+            const subtitle = document.getElementById('standardsSubtitle');
+            const type = result.meta.clasificacion;
+            let label = 'Desconocido';
+            if (type === 'ESTANDARES_7') label = 'Estándares Mínimos (7 Ítems)';
+            else if (type === 'ESTANDARES_21') label = 'Estándares Medios (21 Ítems)';
+            else if (type === 'ESTANDARES_60') label = 'Estándares Máximos (>50 / Riesgo Alto)';
+
+            subtitle.textContent = `Empresa: ${getCompanyName(empresaId)} | Clasificación: ${label}`;
+
+            // Initial Render
+            filterAndRenderStandards();
+            updateProgress();
+        } else {
+            console.error('getEstandares failed:', result.error); // Log to console
+            listContainer.innerHTML = `<div class="alert-item alta">Error (Backend): ${result.error}</div>`;
+        }
+    } catch (error) {
+        console.error('loadStandards failed:', error);
+        listContainer.innerHTML = `<div class="alert-item alta">Error de conexión al cargar estándares: ${error.message}</div>`;
+    }
+}
+
+function filterAndRenderStandards() {
+    const listContainer = document.getElementById('standardsList');
+    const searchTerm = document.getElementById('stdSearch').value.toLowerCase();
+    const filterState = document.getElementById('stdFilterState').value;
+
+    // Filter by Tab (Cycle), Search, and State
+    const filtered = standardsData.filter(std => {
+        // 1. Cycle Filter (Map 'I. PLANEAR' -> 'planear')
+        const cycleKey = std.ciclo.split('.')[1].trim().toLowerCase();
+        if (cycleKey !== currentTab) return false;
+
+        // 2. Search
+        const matchesSearch = std.nombre.toLowerCase().includes(searchTerm) ||
+            std.codigo.toLowerCase().includes(searchTerm);
+        if (!matchesSearch) return false;
+
+        // 3. State
+        if (filterState !== 'all' && std.estado !== filterState) return false;
+
+        return true;
+    });
+
+    if (filtered.length === 0) {
+        listContainer.innerHTML = '<div class="loading">No se encontraron estándares en esta sección.</div>';
+        return;
+    }
+
+    listContainer.innerHTML = filtered.map(std => renderStandardItem(std)).join('');
+
+    // Re-attach event listeners for newly created elements
+    attachStandardItemEvents();
+}
+
+function renderStandardItem(std) {
+    let statusIcon = '⚪';
+    let statusClass = '';
+
+    if (std.estado === 'CUMPLE') { statusIcon = '✅'; statusClass = 'cumple'; }
+    else if (std.estado === 'NO_CUMPLE') { statusIcon = '❌'; statusClass = 'no-cumple'; }
+    else if (std.estado === 'NO_APLICA') { statusIcon = '➖'; statusClass = 'no-aplica'; }
+
+    return `
+    <div class="standard-item" data-code="${std.codigo}">
+        <div class="std-header" onclick="toggleStandard('${std.codigo}')">
+            <span class="std-status-icon">${statusIcon}</span>
+            <span class="std-code">${std.codigo}</span>
+            <span class="std-name">${std.nombre}</span>
+            <span class="std-weight">Peso: ${std.peso}%</span>
+        </div>
+        <div class="std-body" id="body-${std.codigo}">
+            <div class="form-group">
+                <label class="form-label">Estado de Cumplimiento:</label>
+                <div class="std-status-group">
+                    <button class="status-btn ${std.estado === 'CUMPLE' ? 'active' : ''}" 
+                        onclick="updateStandardStatus('${std.codigo}', 'CUMPLE') " data-status="CUMPLE">CUMPLE</button>
+                    <button class="status-btn ${std.estado === 'NO_CUMPLE' ? 'active' : ''}" 
+                        onclick="updateStandardStatus('${std.codigo}', 'NO_CUMPLE')" data-status="NO_CUMPLE">NO CUMPLE</button>
+                    <button class="status-btn ${std.estado === 'NO_APLICA' ? 'active' : ''}" 
+                        onclick="updateStandardStatus('${std.codigo}', 'NO_APLICA')" data-status="NO_APLICA">NO APLICA</button>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Observaciones / Hallazgos:</label>
+                <textarea class="form-textarea" id="obs-${std.codigo}" placeholder="Describa el hallazgo o justificación..." onchange="saveObservation('${std.codigo}')">${std.observacion || ''}</textarea>
+            </div>
+             <div class="std-actions">
+                <button class="btn btn-secondary btn-sm" onclick="openEvidenceModal('${std.codigo}')">📎 Gestionar Evidencias ${std.evidencia_doc_id ? '(1)' : ''}</button>
+                <button class="btn btn-secondary btn-sm" onclick="createStandardPlan('${std.codigo}')">⚡ Crear Plan de Acción</button>
+            </div>
+        </div>
+    </div>
+    `;
+}
+
+// Helper to get company name from state (assuming loaded)
+function getCompanyName(id) {
+    if (!state.empresas) return id;
+    const emp = state.empresas.find(e => e.empresa_id === id);
+    return emp ? emp.nombre : id;
+}
+
+// ============================================
+// GESTIÓN DE EVIDENCIAS (MODAL)
+// ============================================
+
+window.openEvidenceModal = async function (code) {
+    const std = standardsData.find(s => s.codigo === code);
+    if (!std) return;
+
+    // Load available documents
+    let docs = [];
+    try {
+        const res = await callBackend('getDocumentos', { empresa_id: state.currentEmpresa });
+        if (res.success) docs = res.data;
+    } catch (e) { console.error(e); }
+
+    const currentDoc = docs.find(d => d.documento_id === std.evidencia_doc_id);
+
+    const modalBody = `
+        <div style="padding: 1rem;">
+            <p><strong>Estándar:</strong> ${std.codigo} - ${std.nombre}</p>
+            <p>Seleccione un documento existente como evidencia o suba uno nuevo en la sección de Documentos.</p>
+            
+            <div class="form-group">
+                <label class="form-label">Documento Vinculado</label>
+                <select id="evidenceSelect" class="form-select">
+                    <option value="">-- Sin evidencia --</option>
+                    ${docs.map(d => `<option value="${d.documento_id}" ${std.evidencia_doc_id === d.documento_id ? 'selected' : ''}>${d.nombre} (${d.tipo_documento})</option>`).join('')}
+                </select>
+            </div>
+
+            <div id="docPreview" style="margin-top:1rem; padding:1rem; background:#f5f5f5; border-radius:8px; display:${currentDoc ? 'block' : 'none'}">
+                ${currentDoc ? `🔗 <a href="${currentDoc.url_documento}" target="_blank">Ver Documento Actual</a>` : ''}
+            </div>
+        </div>
+    `;
+
+    openModal('Gestionar Evidencia', modalBody, async () => {
+        const selectedId = document.getElementById('evidenceSelect').value;
+
+        // Save to backend
+        try {
+            const result = await callBackend('updateEstandar', {
+                empresa_id: state.currentEmpresa,
+                codigo_estandar: code,
+                estado: std.estado,
+                evidencia_doc_id: selectedId
+            });
+
+            if (result.success) {
+                showToast('Evidencia vinculada correctamente', 'success');
+                // Update local state
+                std.evidencia_doc_id = selectedId;
+                filterAndRenderStandards(); // Re-render to show updated count
+                closeModal();
+            } else {
+                showToast('Error: ' + result.error, 'error');
+            }
+        } catch (error) {
+            showToast('Error de conexión', 'error');
+        }
+    });
+
+    // Simple listener for preview update
+    setTimeout(() => {
+        const sel = document.getElementById('evidenceSelect');
+        if (sel) {
+            sel.addEventListener('change', (e) => {
+                const d = docs.find(doc => doc.documento_id === e.target.value);
+                const prev = document.getElementById('docPreview');
+                if (d && d.url_documento) {
+                    prev.style.display = 'block';
+                    prev.innerHTML = `🔗 <a href="${d.url_documento}" target="_blank">Ver Documento Seleccionado</a>`;
+                } else {
+                    prev.style.display = 'none';
+                }
+            });
+        }
+    }, 100);
+};
+
+window.createStandardPlan = function (code) {
+    const std = standardsData.find(s => s.codigo === code);
+    if (!std) return;
+
+    // We reuse the existing Plan Modal logic but pre-fill it
+    // We need to slightly modify openPlanModal or just hack it here by setting values after open
+    // Since openPlanModal is async/complex, let's call it then fill
+
+    openPlanModal();
+
+    // Small timeout to allow modal to render
+    setTimeout(() => {
+        const activityInput = document.querySelector('input[name="actividad_intervencion"]');
+        const obsInput = document.createElement('textarea'); // We might need to inject if not there, but let's use existing fields
+
+        if (activityInput) {
+            activityInput.value = `Plan de Acción Estándar ${code}: ${std.nombre}`;
+        }
+
+        // We might want to store the standard reference. 
+        // Current form has risk_id. We can leave it empty or maybe use it if strictly needed.
+        // For now, the activity name is the main link.
+    }, 200);
+};
+
+// Global functions for inline onclick handlers (needs to be window scope or attached)
+// For cleaner code, we'll attach these to window
+window.toggleStandard = function (code) {
+    const body = document.getElementById(`body-${code}`);
+    if (body) {
+        const isOpen = body.classList.contains('open');
+        // Close others? Optional.
+        body.classList.toggle('open');
+    }
+};
+
+window.updateStandardStatus = async function (code, newStatus) {
+    const empresaId = state.currentEmpresa;
+
+    // Optimistic UI Update
+    const stdIndex = standardsData.findIndex(s => s.codigo === code);
+    if (stdIndex === -1) return;
+
+    const oldStatus = standardsData[stdIndex].estado;
+    standardsData[stdIndex].estado = newStatus;
+
+    // Update DOM immediately to reflect change
+    filterAndRenderStandards();
+    updateProgress();
+
+    try {
+        const result = await callBackend('updateEstandar', {
+            empresa_id: empresaId,
+            codigo_estandar: code,
+            estado: newStatus,
+            observacion: document.getElementById(`obs-${code}`) ? document.getElementById(`obs-${code}`).value : ''
+        });
+
+        if (!result.success) {
+            // Revert on error
+            standardsData[stdIndex].estado = oldStatus;
+            filterAndRenderStandards();
+            showToast('Error al actualizar: ' + result.error, 'error');
+        }
+    } catch (error) {
+        standardsData[stdIndex].estado = oldStatus;
+        filterAndRenderStandards();
+        showToast('Error de conexión', 'error');
+    }
+};
+
+window.saveObservation = async function (code) {
+    const val = document.getElementById(`obs-${code}`).value;
+    const std = standardsData.find(s => s.codigo === code);
+    if (std) {
+        std.observacion = val;
+        // Silent save
+        await callBackend('updateEstandar', {
+            empresa_id: state.currentEmpresa,
+            codigo_estandar: code,
+            estado: std.estado,
+            observacion: val
+        });
+    }
+};
+
+
+function updateProgress() {
+    if (!standardsData.length) return;
+
+    const totalWeight = standardsData.reduce((acc, curr) => acc + curr.peso, 0);
+    const achievedWeight = standardsData.reduce((acc, curr) => {
+        if (curr.estado === 'CUMPLE' || curr.estado === 'NO_APLICA') {
+            return acc + curr.peso; // NO_APLICA counts as compliant usually, or excluded from base. Res 0312 says it justifies total.
+            // Simplified: If NO_APLICA, we give the points if justified. Assume justified for now.
+        }
+        return acc;
+    }, 0);
+
+    const percentage = Math.round((achievedWeight / totalWeight) * 100) || 0;
+
+    document.getElementById('standardsProgress').style.width = `${percentage}%`;
+    document.getElementById('standardsProgressText').textContent = `${percentage}%`;
+}
+
+function attachStandardItemEvents() {
+    // Empty for now as we use inline onclicks for simplicity in generated HTML
+}
+
+
+// ============================================
+// WIZARD CLASIFICACIÓN (BLOQUE 0)
+// ============================================
+
+function setupWizardEvents() {
+    // Inputs change listeners for real-time calculation
+    document.getElementById('wizTrabajadores').addEventListener('input', calculateStandard);
+    document.getElementById('wizRiesgo').addEventListener('change', calculateStandard);
+
+    // Save button
+    document.getElementById('wizSaveBtn').addEventListener('click', saveClassification);
+}
+
+function calculateStandard() {
+    const workers = parseInt(document.getElementById('wizTrabajadores').value) || 0;
+    const risk = document.getElementById('wizRiesgo').value;
+    const resultDiv = document.getElementById('wizResult');
+    const resultText = document.getElementById('wizClassificationText');
+    const resultBadge = document.getElementById('wizStandardBadge');
+    const saveBtn = document.getElementById('wizSaveBtn');
+
+    if (workers > 0 && risk) {
+        resultDiv.classList.remove('hidden');
+        let standardType = '';
+        let standardLabel = '';
+
+        // Logic based on Res. 0312/2019
+        if (risk === 'IV' || risk === 'V') {
+            standardType = 'ESTANDARES_60';
+            standardLabel = 'Estándares Máximos (>50 o Riesgo IV/V)';
+        } else if (workers > 50) {
+            standardType = 'ESTANDARES_60';
+            standardLabel = 'Estándares Máximos (>50 Trabajadores)';
+        } else if (workers > 10) {
+            standardType = 'ESTANDARES_21';
+            standardLabel = 'Estándares Medios (11-50 Trabajadores)';
+        } else {
+            standardType = 'ESTANDARES_7';
+            standardLabel = 'Estándares Mínimos (Microempresas)';
+        }
+
+        resultText.textContent = standardLabel;
+        resultBadge.textContent = (standardType === 'ESTANDARES_60' ? '60 Ítems' : (standardType === 'ESTANDARES_21' ? '21 Ítems' : '7 Ítems'));
+
+        // Store calculated type in dataset for saving
+        resultDiv.dataset.type = standardType;
+        saveBtn.disabled = false;
+    } else {
+        resultDiv.classList.add('hidden');
+        saveBtn.disabled = true;
+    }
+}
+
+async function saveClassification() {
+    const empresaId = state.currentEmpresa;
+    if (!empresaId) return;
+
+    const workers = document.getElementById('wizTrabajadores').value;
+    const risk = document.getElementById('wizRiesgo').value;
+    const type = document.getElementById('wizResult').dataset.type;
+
+    const btn = document.getElementById('wizSaveBtn');
+    btn.textContent = 'Guardando...';
+    btn.disabled = true;
+
+    try {
+        const result = await callBackend('updateEmpresa', {
+            empresa_id: empresaId,
+            numero_trabajadores: workers,
+            nivel_riesgo: risk,
+            clasificacion_tipo: type
+        });
+
+        if (result.success) {
+            showToast('Clasificación guardada correctamente', 'success');
+            document.getElementById('wizardOverlay').classList.add('hidden');
+            // Refresh dashboard to apply new standards (TODO: Filter logic in next phase)
+            loadDashboard();
+        } else {
+            showToast('Error al guardar: ' + result.error, 'error');
+        }
+    } catch (error) {
+        showToast('Error de conexión', 'error');
+    }
+
+    btn.textContent = 'Guardar y Configurar Estándares';
+    btn.disabled = false;
+}
+
+function checkEmpresaClassification(empresa) {
+    // If no classification, show wizard
+    if (!empresa.clasificacion_tipo || !empresa.nivel_riesgo) {
+        showWizard();
+    }
+}
+
+function showWizard() {
+    const overlay = document.getElementById('wizardOverlay');
+    overlay.classList.remove('hidden');
+    // Pre-fill if data exists (edit mode)
+    // For now, reset
+    document.getElementById('wizTrabajadores').value = '';
+    document.getElementById('wizRiesgo').value = '';
+    document.getElementById('wizResult').classList.add('hidden');
+    document.getElementById('wizSaveBtn').disabled = true;
 }
 
 // ============================================
@@ -444,13 +1183,13 @@ function showSection(sectionName) {
 
 async function loadSectionData(section) {
     switch (section) {
-        case 'dashboard': await loadDashboard(); break;
-        case 'empresas': await loadEmpresas(); break;
-        case 'empleados': await loadEmpleados(); break;
-        case 'documentos': await loadDocumentos(); break;
+        case 'dashboard': loadDashboard(); break;
+        case 'empresas': loadEmpresas(); break;
+        case 'empleados': loadEmpleados(); break;
+        case 'documentos': loadStandards(); break; // Redirect 'documentos' to Standards
         case 'alertas': await loadAlertas(); break;
         case 'usuarios': await loadUsuarios(); break;
-        case 'riesgos': await loadRiesgos(); break;
+        case 'riesgos': loadRiesgos(); break;
         case 'investigaciones': await loadInvestigaciones(); break;
         case 'planes': await loadPlanes(); break;
         case 'auditorias': await loadAuditorias(); break;
@@ -471,6 +1210,16 @@ async function loadDashboard() {
         const result = await callBackend('getDashboardData', { empresaId: state.currentEmpresa });
 
         if (result.success) {
+            // Check classification for current company
+            // Need to fetch company details first or include in dashboard data
+            // For now, let's fetch company details if we have an ID
+            if (state.currentEmpresa) {
+                const empResult = await callBackend('getEmpresa', { id: state.currentEmpresa });
+                if (empResult.success) {
+                    checkEmpresaClassification(empResult.data);
+                }
+            }
+
             const { stats, recentAlertas, docsProximosVencer, cumplimiento } = result.data;
 
             // Update stats
@@ -874,16 +1623,7 @@ async function saveEmpleado() {
 // DOCUMENTOS
 // ============================================
 
-function setupDocumentosEvents() {
-    document.getElementById('addDocumentoBtn').addEventListener('click', () => showDocumentoModal());
-    document.getElementById('documentosFilterBtn').addEventListener('click', () => loadDocumentos());
-    document.getElementById('documentosClearBtn').addEventListener('click', () => {
-        document.getElementById('documentoEmpresa').value = '';
-        document.getElementById('documentoTipo').value = '';
-        document.getElementById('documentoEstado').value = '';
-        loadDocumentos();
-    });
-}
+// function setupDocumentosEvents() { ... } // Legacy moved to setupStandardsEvents
 
 async function loadDocumentos() {
     const filters = {
@@ -2532,7 +3272,7 @@ function renderPlanesTable(planes) {
 }
 
 function showPlanModal() {
-    showToast('Funcionalidad de Planes en desarrollo', 'info');
+    openPlanModal();
 }
 
 // ============================================
@@ -2575,12 +3315,240 @@ function renderAuditoriasTable(items) {
             <td>${item.auditor}</td>
             <td><span class="status-badge ${item.estado}">${item.estado}</span></td>
             <td class="table-actions">
-                <button class="btn btn-sm btn-secondary">✏️</button>
+                <button class="btn btn-sm btn-secondary" onclick="openAuditModal('${item.auditoria_id}')">✏️</button>
             </td>
         </tr>
     `).join('');
 }
 
 function showAuditModal() {
-    showToast('Funcionalidad de Auditoría en desarrollo', 'info');
+    openAuditModal();
+}
+
+/**
+ * Open Audit Modal
+ */
+function openAuditModal(id = null) {
+    const isEdit = !!id;
+    let audit = {};
+
+    // Validar estado de la empresa
+    if (!state.currentEmpresa) {
+        showToast('Seleccione una empresa primero', 'warning');
+        return;
+    }
+
+    // TODO: fetch audit if isEdit (reuse pattern later)
+
+    const modalBody = `
+        <form id="auditForm">
+            <input type="hidden" name="auditoria_id" value="${audit.auditoria_id || ''}">
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Tipo de Auditoría</label>
+                    <select name="tipo" class="form-select" required>
+                         <option value="Interna" ${audit.tipo === 'Interna' ? 'selected' : ''}>Interna</option>
+                         <option value="Externa" ${audit.tipo === 'Externa' ? 'selected' : ''}>Externa</option>
+                         <option value="Revision_Direccion" ${audit.tipo === 'Revision_Direccion' ? 'selected' : ''}>Revisión por Dirección</option>
+                    </select>
+                </div>
+                 <div class="form-group">
+                    <label class="form-label">Estado</label>
+                    <select name="estado" class="form-select">
+                        <option value="programada" ${audit.estado === 'programada' ? 'selected' : ''}>Programada</option>
+                        <option value="ejecutada" ${audit.estado === 'ejecutada' ? 'selected' : ''}>Ejecutada</option>
+                        <option value="cerrada" ${audit.estado === 'cerrada' ? 'selected' : ''}>Cerrada</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Fecha Programada</label>
+                    <input type="date" name="fecha_programada" class="form-input" value="${audit.fecha_programada ? audit.fecha_programada.split('T')[0] : ''}" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Fecha Ejecución (Real)</label>
+                    <input type="date" name="fecha_ejecucion" class="form-input" value="${audit.fecha_ejecucion ? audit.fecha_ejecucion.split('T')[0] : ''}">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Auditor / Responsable</label>
+                <input type="text" name="auditor" class="form-input" value="${audit.auditor || ''}" placeholder="Nombre del auditor o ente certificador" required>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Alcance</label>
+                <textarea name="alcance" class="form-textarea" placeholder="Procesos auditados, sedes, requisitos...">${audit.alcance || ''}</textarea>
+            </div>
+
+             <div class="form-group">
+                <label class="form-label">Hallazgos / Conclusiones</label>
+                <textarea name="hallazgos" class="form-textarea" placeholder="Resumen de no conformidades o resultados...">${audit.hallazgos || ''}</textarea>
+            </div>
+        </form>
+    `;
+
+    openModal(isEdit ? 'Editar Auditoría' : 'Nueva Auditoría', modalBody, () => saveAudit(isEdit));
+}
+
+async function saveAudit(isEdit) {
+    const form = document.getElementById('auditForm');
+    const formData = new FormData(form);
+    const data = Object.fromEntries(formData.entries());
+
+    data.empresa_id = state.currentEmpresa;
+    const action = isEdit ? 'updateAuditoria' : 'createAuditoria';
+
+    showToast('Guardando...', 'info');
+
+    try {
+        const result = await callBackend(action, data);
+        if (result.success) {
+            showToast('Auditoría guardada', 'success');
+            closeModal();
+            loadAuditorias();
+        } else {
+            showToast('Error: ' + result.error, 'error');
+        }
+    } catch (error) {
+        showToast('Error de conexión', 'error');
+    }
+}
+
+// ============================================
+// COMPATIBILITY & MISSING FUNCTIONS
+// ============================================
+
+/**
+ * Open Modal Wrapper
+ * Adapts specific calls to the generic showModal or directly manipulates the DOM
+ */
+function openModal(title, bodyContent, onConfirm) {
+    document.getElementById('modalTitle').textContent = title;
+    document.getElementById('modalBody').innerHTML = bodyContent;
+
+    const footer = document.getElementById('modalFooter');
+    footer.innerHTML = '';
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'btn btn-secondary';
+    cancelBtn.textContent = 'Cancelar';
+    cancelBtn.onclick = closeModal;
+
+    const confirmBtn = document.createElement('button');
+    confirmBtn.className = 'btn btn-primary';
+    confirmBtn.textContent = 'Guardar';
+    confirmBtn.onclick = onConfirm;
+
+    footer.appendChild(cancelBtn);
+    footer.appendChild(confirmBtn);
+
+    document.getElementById('modalOverlay').classList.remove('hidden');
+}
+
+/**
+ * Open Plan of Action Modal (Phase 3)
+ */
+async function openPlanModal(id = null) {
+    const isEdit = !!id;
+    let plan = {};
+
+    // Validar estado de la empresa
+    if (!state.currentEmpresa) {
+        showToast('Seleccione una empresa primero', 'warning');
+        return;
+    }
+
+    // Fetch Risks for Dropdown
+    let riesgosOpts = '<option value="">-- Sin vincular --</option>';
+    try {
+        const riesgosRes = await callBackend('getMatrizRiesgos', { empresaId: state.currentEmpresa });
+        if (riesgosRes.success) {
+            riesgosOpts += riesgosRes.data.map(r =>
+                `<option value="${r.riesgo_id}" ${plan.riesgo_id === r.riesgo_id ? 'selected' : ''}>${r.peligro_descripcion} (${r.nivel_riesgo})</option>`
+            ).join('');
+        }
+    } catch (e) { console.error(e); }
+
+    const modalBody = `
+        <form id="planForm">
+            <input type="hidden" name="plan_id" value="${plan.plan_id || ''}">
+            
+            <div class="form-group">
+                <label class="form-label">Actividad de Intervención</label>
+                <input type="text" name="actividad_intervencion" class="form-input" value="${plan.actividad_intervencion || ''}" required placeholder="Descripción de la acción">
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Responsable</label>
+                    <input type="text" name="responsable_id" class="form-input" value="${plan.responsable_id || ''}" placeholder="Nombre o ID">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Fecha Límite</label>
+                    <input type="date" name="fecha_limite" class="form-input" value="${plan.fecha_limite ? plan.fecha_limite.split('T')[0] : ''}" required>
+                </div>
+            </div>
+
+             <div class="form-group box-highlight">
+                <label class="form-label">🔗 Origen (Riesgo Asociado)</label>
+                <select name="riesgo_id" class="form-select">
+                    ${riesgosOpts}
+                </select>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Estado</label>
+                    <select name="estado" class="form-select">
+                        <option value="programado" ${plan.estado === 'programado' ? 'selected' : ''}>Programado</option>
+                        <option value="en_curso" ${plan.estado === 'en_curso' ? 'selected' : ''}>En Curso</option>
+                        <option value="completado" ${plan.estado === 'completado' ? 'selected' : ''}>Completado</option>
+                    </select>
+                </div>
+                 <div class="form-group">
+                    <label class="form-label">Prioridad</label>
+                    <select name="prioridad" class="form-select">
+                        <option value="alta" ${plan.prioridad === 'alta' ? 'selected' : ''}>Alta</option>
+                        <option value="media" ${plan.prioridad === 'media' ? 'selected' : 'selected'}>Media</option>
+                        <option value="baja" ${plan.prioridad === 'baja' ? 'selected' : ''}>Baja</option>
+                    </select>
+                </div>
+            </div>
+            
+             <div class="form-group">
+                <label class="form-label">Recursos Necesarios</label>
+                <textarea name="recursos" class="form-textarea">${plan.recursos || ''}</textarea>
+            </div>
+        </form>
+    `;
+
+    openModal(isEdit ? 'Editar Plan de Acción' : 'Nuevo Plan de Acción', modalBody, () => savePlan(isEdit));
+}
+
+async function savePlan(isEdit) {
+    const form = document.getElementById('planForm');
+    const formData = new FormData(form);
+    const data = Object.fromEntries(formData.entries());
+
+    data.empresa_id = state.currentEmpresa;
+    const action = isEdit ? 'updatePlanIntervencion' : 'createPlanIntervencion';
+
+    showToast('Guardando...', 'info');
+
+    try {
+        const result = await callBackend(action, data);
+        if (result.success) {
+            showToast('Plan de acción guardado', 'success');
+            closeModal();
+            if (window.loadPlanes) loadPlanes(); // Refresh if on planes view
+        } else {
+            showToast('Error: ' + result.error, 'error');
+        }
+    } catch (error) {
+        showToast('Error de conexión', 'error');
+    }
 }
