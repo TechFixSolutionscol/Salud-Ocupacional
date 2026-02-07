@@ -41,12 +41,47 @@ async function callBackend(action, params = {}) {
                 .withFailureHandler(error => reject(error))
                 .apiDispatcher({ action, params });
         }
-        // 2. Local Environment (JSONP Tunnel)
+        // 2. Local Environment
         else {
-            requestJsonp(action, params)
-                .then(resolve)
-                .catch(reject);
+            // For file uploads, we MUST use POST (bypassing JSONP limit)
+            if (action === 'uploadFile') {
+                requestPost(action, params)
+                    .then(resolve)
+                    .catch(reject);
+            } else {
+                requestJsonp(action, params)
+                    .then(resolve)
+                    .catch(reject);
+            }
         }
+    });
+}
+
+/**
+ * Make a JSONP request to Google Apps Script
+ */
+/**
+ * Make a POST request to Google Apps Script (For large payloads)
+ * Note: Requires doPOST to be implemented in backend
+ */
+function requestPost(action, params) {
+    return new Promise((resolve, reject) => {
+        const payload = JSON.stringify({ action: action, params: params });
+
+        // Use text/plain to avoid preflight CORS check if possible
+        fetch(DEPLOYMENT_URL, {
+            method: 'POST',
+            body: payload,
+            headers: {
+                'Content-Type': 'text/plain;charset=utf-8'
+            }
+        })
+            .then(response => response.json())
+            .then(data => resolve(data))
+            .catch(err => {
+                console.error('POST Error:', err);
+                reject(new Error('Error al subir archivo. Verifique conexión o despliegue.'));
+            });
     });
 }
 
@@ -3300,6 +3335,29 @@ async function loadAuditorias() {
     hideLoading();
 }
 
+/**
+ * Convert Drive Viewer URL to Download URL
+ */
+function getDriveDownloadLink(viewUrl) {
+    if (!viewUrl) return '';
+    try {
+        // Handle common Drive View URLs
+        // Format 1: /file/d/ID/view
+        let match = viewUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+        if (match && match[1]) {
+            return `https://drive.google.com/uc?export=download&id=${match[1]}`;
+        }
+        // Format 2: id=ID
+        match = viewUrl.match(/id=([a-zA-Z0-9_-]+)/);
+        if (match && match[1]) {
+            return `https://drive.google.com/uc?export=download&id=${match[1]}`;
+        }
+    } catch (e) { console.error('Error parsing Drive URL', e); }
+
+    // Fallback: return original (might not trigger download but is safe)
+    return viewUrl;
+}
+
 function renderAuditoriasTable(items) {
     const tbody = document.getElementById('auditoriasTableBody');
     if (!items || items.length === 0) {
@@ -3316,6 +3374,10 @@ function renderAuditoriasTable(items) {
             <td><span class="status-badge ${item.estado}">${item.estado}</span></td>
             <td class="table-actions">
                 <button class="btn btn-sm btn-secondary" onclick="openAuditModal('${item.auditoria_id}')">✏️</button>
+                ${item.url_evidencia ? `
+                    <a href="${item.url_evidencia}" target="_blank" class="btn btn-sm btn-ghost" title="Ver en Drive">👁️</a>
+                    <a href="${getDriveDownloadLink(item.url_evidencia)}" class="btn btn-sm btn-ghost" title="Descargar">⬇️</a>
+                ` : ''}
             </td>
         </tr>
     `).join('');
@@ -3328,7 +3390,7 @@ function showAuditModal() {
 /**
  * Open Audit Modal
  */
-function openAuditModal(id = null) {
+async function openAuditModal(id = null) {
     const isEdit = !!id;
     let audit = {};
 
@@ -3338,7 +3400,15 @@ function openAuditModal(id = null) {
         return;
     }
 
-    // TODO: fetch audit if isEdit (reuse pattern later)
+    // Fetch audit if edit mode
+    if (isEdit) {
+        try {
+            const res = await callBackend('getAuditorias', { empresaId: state.currentEmpresa });
+            if (res.success) {
+                audit = res.data.find(a => a.auditoria_id === id) || {};
+            }
+        } catch (e) { console.error(e); }
+    }
 
     const modalBody = `
         <form id="auditForm">
@@ -3388,8 +3458,23 @@ function openAuditModal(id = null) {
                 <label class="form-label">Hallazgos / Conclusiones</label>
                 <textarea name="hallazgos" class="form-textarea" placeholder="Resumen de no conformidades o resultados...">${audit.hallazgos || ''}</textarea>
             </div>
+
+            <div class="form-group box-highlight">
+                 <label class="form-label">📎 Evidencia / Informe</label>
+                 ${audit.url_evidencia ?
+            `<div style="margin-bottom:0.5rem">
+                        <a href="${audit.url_evidencia}" target="_blank" class="btn btn-sm btn-ghost">👁️ Ver Archivo</a>
+                        <a href="${getDriveDownloadLink(audit.url_evidencia)}" class="btn btn-sm btn-ghost">⬇️ Descargar</a>
+                     </div>` : ''}
+                 
+                 <div class="file-upload-wrapper">
+                    <input type="file" id="auditFile" class="form-input" accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.png">
+                    <small class="text-muted">Seleccione un archivo para adjuntar (subirá a Drive)</small>
+                 </div>
+            </div>
         </form>
     `;
+
 
     openModal(isEdit ? 'Editar Auditoría' : 'Nueva Auditoría', modalBody, () => saveAudit(isEdit));
 }
@@ -3398,11 +3483,72 @@ async function saveAudit(isEdit) {
     const form = document.getElementById('auditForm');
     const formData = new FormData(form);
     const data = Object.fromEntries(formData.entries());
+    const fileInput = document.getElementById('auditFile');
 
     data.empresa_id = state.currentEmpresa;
     const action = isEdit ? 'updateAuditoria' : 'createAuditoria';
 
-    showToast('Guardando...', 'info');
+    showToast('Procesando...', 'info');
+
+    // 1. Handle File Upload if present
+    if (fileInput.files.length > 0) {
+        showToast('Subiendo archivo...', 'info');
+        const file = fileInput.files[0];
+        const reader = new FileReader();
+
+        reader.onload = async function () {
+            const base64 = reader.result.split(',')[1];
+            const uploadData = {
+                empresaId: state.currentEmpresa,
+                module: 'Auditorias',
+                filename: `Audit_${data.fecha_programada}_${file.name} `,
+                fileContent: base64,
+                mimeType: file.type
+            };
+
+            try {
+                const uploadRes = await callBackend('uploadFile', uploadData);
+                if (uploadRes.success) {
+                    data.url_evidencia = uploadRes.url; // Link file url
+
+                    // 2. Save Audit Data
+                    saveAuditData(action, data);
+                } else {
+                    showToast('Error al subir archivo: ' + uploadRes.error, 'error');
+                }
+            } catch (e) {
+                showToast('Error de conexión al subir', 'error');
+            }
+        };
+        reader.readAsDataURL(file);
+    } else {
+        // No file, just save (keep existing url if edit)
+        // If edit, we don't need to send url_evidencia unless changed, but backend updates whole row
+        // How to keep existing? Backend usually overwrites.
+        // We should fetch existing first or ensure 'data' has it? 
+        // We fetched 'audit' obj above but 'data' comes from form. Form doesn't have url input.
+        // We need to inject it if exists and no new file.
+
+        // Quick fix: Add hidden input for existing url or handle in backend?
+        // Let's re-fetch the audit obj from scope? No, 'audit' var is local to openAuditModal.
+        // We can add a hidden input to the form.
+
+        saveAuditData(action, data);
+    }
+}
+
+async function saveAuditData(action, data) {
+    // Hack to preserve existing URL if not uploading new one
+    // But since we can't easily access 'audit' obj here from openModal scope without passing it...
+    // We added <input type="hidden" name="auditoria_id" ...>
+    // Let's add <input type="hidden" name="existing_url"> logic in Step 3.
+    // Wait, simpler: We can just let the backend handle partial updates? No, updateRow updates all keys passed.
+    // If we don't pass 'url_evidencia', it stays undefined in 'data'. 
+    // updateRow iterates headers. detailed impl:
+    // "const newRow = headers.map((header, index) => { if (header === idField) return id; return data[header] !== undefined ? data[header] : found.data[index]; });"
+    // So if data['url_evidencia'] is undefined, it KEEPS existing. Perfect!
+
+    // So we only set data.url_evidencia if we uploaded a file. otherwise it's undefined and ignored. SUCCESS.
 
     try {
         const result = await callBackend(action, data);
@@ -3468,62 +3614,62 @@ async function openPlanModal(id = null) {
         const riesgosRes = await callBackend('getMatrizRiesgos', { empresaId: state.currentEmpresa });
         if (riesgosRes.success) {
             riesgosOpts += riesgosRes.data.map(r =>
-                `<option value="${r.riesgo_id}" ${plan.riesgo_id === r.riesgo_id ? 'selected' : ''}>${r.peligro_descripcion} (${r.nivel_riesgo})</option>`
+                `< option value = "${r.riesgo_id}" ${plan.riesgo_id === r.riesgo_id ? 'selected' : ''}> ${r.peligro_descripcion} (${r.nivel_riesgo})</option > `
             ).join('');
         }
     } catch (e) { console.error(e); }
 
     const modalBody = `
-        <form id="planForm">
+        < form id = "planForm" >
             <input type="hidden" name="plan_id" value="${plan.plan_id || ''}">
-            
-            <div class="form-group">
-                <label class="form-label">Actividad de Intervención</label>
-                <input type="text" name="actividad_intervencion" class="form-input" value="${plan.actividad_intervencion || ''}" required placeholder="Descripción de la acción">
-            </div>
 
-            <div class="form-row">
                 <div class="form-group">
-                    <label class="form-label">Responsable</label>
-                    <input type="text" name="responsable_id" class="form-input" value="${plan.responsable_id || ''}" placeholder="Nombre o ID">
+                    <label class="form-label">Actividad de Intervención</label>
+                    <input type="text" name="actividad_intervencion" class="form-input" value="${plan.actividad_intervencion || ''}" required placeholder="Descripción de la acción">
                 </div>
-                <div class="form-group">
-                    <label class="form-label">Fecha Límite</label>
-                    <input type="date" name="fecha_limite" class="form-input" value="${plan.fecha_limite ? plan.fecha_limite.split('T')[0] : ''}" required>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Responsable</label>
+                        <input type="text" name="responsable_id" class="form-input" value="${plan.responsable_id || ''}" placeholder="Nombre o ID">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Fecha Límite</label>
+                        <input type="date" name="fecha_limite" class="form-input" value="${plan.fecha_limite ? plan.fecha_limite.split('T')[0] : ''}" required>
+                    </div>
                 </div>
-            </div>
 
-             <div class="form-group box-highlight">
-                <label class="form-label">🔗 Origen (Riesgo Asociado)</label>
-                <select name="riesgo_id" class="form-select">
-                    ${riesgosOpts}
-                </select>
-            </div>
-
-            <div class="form-row">
-                <div class="form-group">
-                    <label class="form-label">Estado</label>
-                    <select name="estado" class="form-select">
-                        <option value="programado" ${plan.estado === 'programado' ? 'selected' : ''}>Programado</option>
-                        <option value="en_curso" ${plan.estado === 'en_curso' ? 'selected' : ''}>En Curso</option>
-                        <option value="completado" ${plan.estado === 'completado' ? 'selected' : ''}>Completado</option>
+                <div class="form-group box-highlight">
+                    <label class="form-label">🔗 Origen (Riesgo Asociado)</label>
+                    <select name="riesgo_id" class="form-select">
+                        ${riesgosOpts}
                     </select>
                 </div>
-                 <div class="form-group">
-                    <label class="form-label">Prioridad</label>
-                    <select name="prioridad" class="form-select">
-                        <option value="alta" ${plan.prioridad === 'alta' ? 'selected' : ''}>Alta</option>
-                        <option value="media" ${plan.prioridad === 'media' ? 'selected' : 'selected'}>Media</option>
-                        <option value="baja" ${plan.prioridad === 'baja' ? 'selected' : ''}>Baja</option>
-                    </select>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Estado</label>
+                        <select name="estado" class="form-select">
+                            <option value="programado" ${plan.estado === 'programado' ? 'selected' : ''}>Programado</option>
+                            <option value="en_curso" ${plan.estado === 'en_curso' ? 'selected' : ''}>En Curso</option>
+                            <option value="completado" ${plan.estado === 'completado' ? 'selected' : ''}>Completado</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Prioridad</label>
+                        <select name="prioridad" class="form-select">
+                            <option value="alta" ${plan.prioridad === 'alta' ? 'selected' : ''}>Alta</option>
+                            <option value="media" ${plan.prioridad === 'media' ? 'selected' : 'selected'}>Media</option>
+                            <option value="baja" ${plan.prioridad === 'baja' ? 'selected' : ''}>Baja</option>
+                        </select>
+                    </div>
                 </div>
-            </div>
-            
-             <div class="form-group">
-                <label class="form-label">Recursos Necesarios</label>
-                <textarea name="recursos" class="form-textarea">${plan.recursos || ''}</textarea>
-            </div>
-        </form>
+
+                <div class="form-group">
+                    <label class="form-label">Recursos Necesarios</label>
+                    <textarea name="recursos" class="form-textarea">${plan.recursos || ''}</textarea>
+                </div>
+            </form>
     `;
 
     openModal(isEdit ? 'Editar Plan de Acción' : 'Nuevo Plan de Acción', modalBody, () => savePlan(isEdit));

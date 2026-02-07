@@ -95,17 +95,37 @@ function apiDispatcher(request) {
  */
 function doPost(e) {
   try {
-    // Strict check for HTTP context
-    if (!e || !e.postData) {
-      return ContentService.createTextOutput(JSON.stringify({
-        success: false, 
-        error: 'Invalid HTTP Request'
-      })).setMimeType(ContentService.MimeType.JSON);
-    }
+    // 1. Parse Input Data
+    let data;
     
-    const data = JSON.parse(e.postData.contents);
+    // Case A: JSON Payload (standard)
+    if (e.postData && e.postData.type === 'application/json') {
+      data = JSON.parse(e.postData.contents);
+    } 
+    // Case B: Form Data (if sent via fetch body stringified)
+    else if (e.postData && e.postData.contents) {
+        try {
+            data = JSON.parse(e.postData.contents);
+        } catch(ignore) {
+             // Fallback: try to read as form params if simple
+             data = e.parameter;
+        }
+    } else {
+        // Fallback to parameters
+        data = e.parameter ;
+    }
+
+    if (!data || !data.action) {
+         return ContentService.createTextOutput(JSON.stringify({
+            success: false, 
+            error: 'Invalid Request: No action specified'
+          })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // 2. Execute Logic
     const result = handleApiRequest(data);
     
+    // 3. Return JSON Response
     return ContentService.createTextOutput(JSON.stringify(result))
       .setMimeType(ContentService.MimeType.JSON);
       
@@ -215,6 +235,11 @@ function handleApiRequest(data) {
       case 'generateSystemDocument': result = generateSystemDocument(params.empresaId, params.docType); break;
       case 'verificarCumplimientoDecreto1072': result = verificarCumplimientoDecreto1072(params.empresaId); break;
       
+      case 'uploadFile':
+          // File upload via payload or custom handler
+          return uploadFileHandler(params); 
+      break;
+      
       default:
         result = { success: false, error: 'Unknown action: ' + action };
     }
@@ -295,7 +320,7 @@ function initializeSystem() {
       ],
       [SHEETS.AUDITORIAS]: [
         'auditoria_id', 'empresa_id', 'tipo', 'fecha_programada', 'fecha_ejecucion', 
-        'auditor', 'alcance', 'hallazgos', 'estado', 'fecha_registro'
+        'auditor', 'alcance', 'hallazgos', 'estado', 'fecha_registro', 'url_evidencia'
       ],
       [SHEETS.CUMPLIMIENTO]: [
         'cumplimiento_id', 'empresa_id', 'codigo_estandar', 'estado', // estado: CUMPLE, NO_CUMPLE, NO_APLICA
@@ -385,4 +410,73 @@ function getSheet(sheetName) {
     throw new Error(`Sheet "${sheetName}" not found. Please run initializeSystem() first.`);
   }
   return sheet;
+}
+
+function uploadFileHandler(params) {
+    try {
+        validateRequired(params, ['empresaId', 'module', 'filename', 'fileContent', 'mimeType']);
+        
+        let rootFolder;
+        
+        // 1. Try Configured ID
+        if (CONFIG.DRIVE_FOLDER_ID && CONFIG.DRIVE_FOLDER_ID.trim() !== '') {
+            try {
+                rootFolder = DriveApp.getFolderById(CONFIG.DRIVE_FOLDER_ID);
+            } catch(e) {
+                console.warn('Invalid Drive ID, falling back to search');
+            }
+        }
+        
+        // 2. Search or Create Root
+        if (!rootFolder) {
+            const folders = DriveApp.getFoldersByName('SG-SST System Files');
+            if (folders.hasNext()) {
+                rootFolder = folders.next();
+            } else {
+                rootFolder = DriveApp.createFolder('SG-SST System Files');
+            }
+        }
+        
+        // 3. Company Folder
+        // We want folder name to be clearer: "NOMBRE_EMPRESA (ID)"
+        // But we only have ID in params. Let's fetch name or stick to ID for stability.
+        // Let's stick to "Empresa_ID" for machine-readability, or fetch if needed.
+        // For now, let's keep ID to avoid extra DB calls, but ensure it's inside Root.
+        
+        const companyFolderName = `Empresa_${params.empresaId}`;
+        const companyIter = rootFolder.getFoldersByName(companyFolderName);
+        let companyFolder;
+        
+        if (companyIter.hasNext()) {
+            companyFolder = companyIter.next();
+        } else {
+            companyFolder = rootFolder.createFolder(companyFolderName);
+        }
+
+        // 4. Module Folder
+        const moduleIter = companyFolder.getFoldersByName(params.module);
+        let moduleFolder;
+        if (moduleIter.hasNext()) {
+            moduleFolder = moduleIter.next();
+        } else {
+            moduleFolder = companyFolder.createFolder(params.module);
+        }
+
+        // 5. Create File
+        const decoded = Utilities.base64Decode(params.fileContent);
+        const blob = Utilities.newBlob(decoded, params.mimeType, params.filename);
+        const file = moduleFolder.createFile(blob);
+        
+        // 6. Set public (optional, depends on security requirement)
+        file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+
+        return {
+            success: true,
+            url: file.getUrl(),
+            fileId: file.getId(),
+            downloadUrl: file.getDownloadUrl()
+        };
+    } catch (e) {
+        return { success: false, error: e.message };
+    }
 }
